@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api"
     
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/cgas.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR.as_posix()}/cgas.db")
     
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "cgas-insecure-secret-key-change-in-production-cs1207")
