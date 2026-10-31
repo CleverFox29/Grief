@@ -10,6 +10,13 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     MessageResponse
 )
+from app.schemas.ticket import (
+    CategoryResponse,
+    DuplicateCheckRequest,
+    DuplicateMatch,
+    DuplicateCheckResponse,
+    TicketResponse
+)
 
 __all__ = [
     "LoginRequest",
@@ -19,5 +26,10 @@ __all__ = [
     "RequestOTPResponse",
     "ResetPasswordWithOTPRequest",
     "ChangePasswordRequest",
-    "MessageResponse"
+    "MessageResponse",
+    "CategoryResponse",
+    "DuplicateCheckRequest",
+    "DuplicateMatch",
+    "DuplicateCheckResponse",
+    "TicketResponse"
 ]

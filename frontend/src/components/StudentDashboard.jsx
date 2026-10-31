@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { PlusCircle, ListOrdered, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import RaiseGrievanceModal from './RaiseGrievanceModal';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
+  const [isRaiseModalOpen, setIsRaiseModalOpen] = useState(false);
+  const [recentTickets, setRecentTickets] = useState([]);
+
+  const handleTicketCreated = (newTicket) => {
+    setRecentTickets(prev => [newTicket, ...prev]);
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -24,7 +31,7 @@ export default function StudentDashboard() {
 
           <div className="flex items-center space-x-3">
             <button
-              onClick={() => alert('Phase 3 will open the New Grievance Filing Wizard with intelligent Deduplication Check.')}
+              onClick={() => setIsRaiseModalOpen(true)}
               className="inline-flex items-center space-x-2 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl shadow transition-colors text-sm"
             >
               <PlusCircle className="w-4 h-4" />
@@ -42,7 +49,7 @@ export default function StudentDashboard() {
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Tickets</p>
-            <p className="text-2xl font-bold text-slate-800">0</p>
+            <p className="text-2xl font-bold text-slate-800">{recentTickets.length}</p>
           </div>
         </div>
 
@@ -67,20 +74,64 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Placeholder for Phase 4 Ticket Tracking */}
+      {/* Recently Created Tickets or Empty State */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-slate-800">My Grievances (Phase 4)</h3>
-          <span className="text-xs text-slate-400 font-medium">Sorted by newest first</span>
+          <h3 className="text-lg font-bold text-slate-800">Recent Grievances</h3>
+          <span className="text-xs text-slate-400 font-medium">Full tracking list in Phase 4</span>
         </div>
-        <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
-          <ListOrdered className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-          <p className="text-sm font-semibold text-slate-700">No active grievances filed yet</p>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
-            Phase 3 will enable submitting grievances across Plumbing, Carpentry, Electrical, Masonry, Administrative, and Security.
-          </p>
-        </div>
+
+        {recentTickets.length > 0 ? (
+          <div className="space-y-3">
+            {recentTickets.map(t => (
+              <div key={t.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-mono text-xs font-bold text-slate-900">#{t.ticket_id}</span>
+                    <span className="text-[10px] font-semibold bg-teal-100 text-teal-800 px-2 py-0.5 rounded">
+                      {t.category_name}
+                    </span>
+                    <span className="text-[10px] font-semibold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                      {t.status}
+                    </span>
+                    {t.is_flagged_duplicate && (
+                      <span className="text-[10px] font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                        Flagged Duplicate
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-medium text-slate-700 mt-1">{t.location} &bull; {t.description}</p>
+                </div>
+                <div className="text-right text-[11px] text-slate-400">
+                  {new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
+            <ListOrdered className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-700">No grievances filed yet in this session</p>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">
+              Click "Raise Grievance" to submit a ticket across Plumbing, Carpentry, Electrical, Masonry, Administrative, or Security.
+            </p>
+            <button
+              onClick={() => setIsRaiseModalOpen(true)}
+              className="inline-flex items-center space-x-1.5 text-xs font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-3.5 py-2 rounded-xl transition-colors"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>Raise First Grievance</span>
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Raise Grievance Modal (F4-F7, U3) */}
+      <RaiseGrievanceModal
+        isOpen={isRaiseModalOpen}
+        onClose={() => setIsRaiseModalOpen(false)}
+        onTicketCreated={handleTicketCreated}
+      />
     </div>
   );
 }
