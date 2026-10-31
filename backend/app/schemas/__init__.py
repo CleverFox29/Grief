@@ -26,6 +26,18 @@ from app.schemas.ticket import (
     UpdateTicketRequest,
     NotificationResponse
 )
+from app.schemas.admin import (
+    StudentCreateRequest,
+    StudentResponse,
+    CSVImportResponse,
+    StaffCreateRequest,
+    StaffUpdateRequest,
+    CategoryCreateRequest,
+    CategoryUpdateRequest,
+    AuditLogResponse,
+    ReportSummaryItem,
+    ReportResponse
+)
 
 __all__ = [
     "LoginRequest",
@@ -49,5 +61,15 @@ __all__ = [
     "TicketItemResponse",
     "TicketDetailResponse",
     "UpdateTicketRequest",
-    "NotificationResponse"
+    "NotificationResponse",
+    "StudentCreateRequest",
+    "StudentResponse",
+    "CSVImportResponse",
+    "StaffCreateRequest",
+    "StaffUpdateRequest",
+    "CategoryCreateRequest",
+    "CategoryUpdateRequest",
+    "AuditLogResponse",
+    "ReportSummaryItem",
+    "ReportResponse"
 ]

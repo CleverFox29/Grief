@@ -19,7 +19,7 @@ class Category(Base, TimestampMixin):
     is_active = Column(Boolean, default=True, nullable=False)
 
     # Relationships
-    tickets = relationship("Ticket", back_populates="category")
+    tickets = relationship("Ticket", back_populates="category", cascade="all, delete-orphan")
     staff_members = relationship("StaffRecord", back_populates="category")
 
     def has_active_tickets(self) -> bool:

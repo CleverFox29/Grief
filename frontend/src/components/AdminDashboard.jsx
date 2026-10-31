@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, Inbox, Users, Layers, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Inbox, Users, Layers, AlertTriangle, BarChart3, Database } from 'lucide-react';
 import AdminTicketQueue from './AdminTicketQueue';
+import AdminRecordsManagement from './AdminRecordsManagement';
+import AdminReports from './AdminReports';
 
 export default function AdminDashboard() {
   const { user, token } = useAuth();
+  const [activeTab, setActiveTab] = useState('QUEUE'); // 'QUEUE', 'RECORDS', 'REPORTS'
   const [stats, setStats] = useState({ total: 0, open: 0, in_progress: 0 });
 
   useEffect(() => {
@@ -23,7 +26,7 @@ export default function AdminDashboard() {
         })
         .catch(console.error);
     }
-  }, [token]);
+  }, [token, activeTab]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -36,7 +39,7 @@ export default function AdminDashboard() {
               Admin Portal &bull; {user?.admin_level || 'STANDARD'}
             </span>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-2">
-              Central Grievance Queue
+              Administrator Console
             </h2>
             <p className="text-sm text-slate-300 mt-1">
               Logged in as <span className="font-semibold text-white">{user?.name}</span> ({user?.user_id}) &bull; Dept: <span className="text-white font-medium">{user?.department}</span>
@@ -51,47 +54,85 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Admin Operations Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Queue Total</span>
-            <Inbox className="w-5 h-5 text-indigo-500" />
-          </div>
-          <p className="text-2xl font-bold text-slate-800">{stats.total}</p>
-          <span className="text-[11px] text-slate-500">Primary tickets (F9)</span>
-        </div>
+      {/* Primary Navigation Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        <button
+          onClick={() => setActiveTab('QUEUE')}
+          className={`inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'QUEUE'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Inbox className="w-4 h-4 text-amber-400" />
+          <span>Ticket Queue (F9, F10, F11)</span>
+          <span className="ml-1 text-[10px] bg-slate-800 px-2 py-0.5 rounded-full text-amber-300">
+            {stats.total}
+          </span>
+        </button>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Awaiting Action</span>
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-          </div>
-          <p className="text-2xl font-bold text-amber-600">{stats.open}</p>
-          <span className="text-[11px] text-amber-600 font-medium">Status: OPEN</span>
-        </div>
+        <button
+          onClick={() => setActiveTab('RECORDS')}
+          className={`inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'RECORDS'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Database className="w-4 h-4 text-teal-400" />
+          <span>Master Records & CSV (F14)</span>
+        </button>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">In Progress</span>
-            <Users className="w-5 h-5 text-teal-500" />
-          </div>
-          <p className="text-2xl font-bold text-teal-600">{stats.in_progress}</p>
-          <span className="text-[11px] text-teal-600 font-medium">Work underway</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Auditing</span>
-            <ShieldCheck className="w-5 h-5 text-emerald-500" />
-          </div>
-          <p className="text-2xl font-bold text-slate-800">Immutable</p>
-          <span className="text-[11px] text-slate-500">Non-editable logs (F15)</span>
-        </div>
+        <button
+          onClick={() => setActiveTab('REPORTS')}
+          className={`inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'REPORTS'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 text-indigo-400" />
+          <span>Audit Logs & Reports (F15)</span>
+        </button>
       </div>
 
-      {/* Unified Ticket Queue Component (F9, F10, F11, U5, U6) */}
-      <AdminTicketQueue />
+      {/* TAB CONTENT */}
+      {activeTab === 'QUEUE' && (
+        <div className="space-y-6">
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Awaiting Action</span>
+                <p className="text-xl font-bold text-amber-600">{stats.open}</p>
+              </div>
+              <AlertTriangle className="w-6 h-6 text-amber-500" />
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">In Progress</span>
+                <p className="text-xl font-bold text-teal-600">{stats.in_progress}</p>
+              </div>
+              <Users className="w-6 h-6 text-teal-500" />
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Queue</span>
+                <p className="text-xl font-bold text-slate-800">{stats.total}</p>
+              </div>
+              <Inbox className="w-6 h-6 text-indigo-500" />
+            </div>
+          </div>
+
+          <AdminTicketQueue />
+        </div>
+      )}
+
+      {activeTab === 'RECORDS' && <AdminRecordsManagement />}
+
+      {activeTab === 'REPORTS' && <AdminReports />}
 
     </div>
   );
