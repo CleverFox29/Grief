@@ -12,6 +12,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import get_db
 from app.models import Category
+from app.api import auth_router
 
 # Lifecycle manager
 @asynccontextmanager
@@ -35,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include API Routers
+app.include_router(auth_router, prefix=settings.API_PREFIX)
 
 # Mount uploads static directory for photo proof
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

@@ -1,0 +1,70 @@
+import React from 'react';
+import { useAuth } from '../context/AuthContext';
+import { LogOut, User, ShieldCheck, GraduationCap } from 'lucide-react';
+
+export default function Navbar() {
+  const { user, logout } = useAuth();
+
+  return (
+    <header className="bg-slate-900 text-white shadow-md sticky top-0 z-40">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+        
+        {/* Brand / Logo */}
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-teal-500 text-slate-950 font-black flex items-center justify-center text-lg shadow-sm">
+            CG
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-base sm:text-lg font-bold tracking-tight">CGAS Portal</h1>
+              <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider bg-slate-800 text-teal-300 border border-teal-500/30 px-2 py-0.5 rounded-full">
+                v1.0
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 hidden xs:block">Campus Grievance Addressal System</p>
+          </div>
+        </div>
+
+        {/* User Info & Actions */}
+        {user ? (
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            <div className="flex items-center space-x-2 text-right">
+              <div className="hidden sm:block text-xs">
+                <p className="font-semibold text-slate-100">{user.name}</p>
+                <p className="text-slate-400">
+                  {user.role === 'STUDENT' ? `Room: ${user.hostel_room || 'N/A'}` : user.department || 'Admin'}
+                </p>
+              </div>
+              <span className={`inline-flex items-center space-x-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                user.role === 'ADMIN'
+                  ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                  : 'bg-teal-500/10 text-teal-300 border-teal-500/30'
+              }`}>
+                {user.role === 'ADMIN' ? (
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                ) : (
+                  <GraduationCap className="w-3.5 h-3.5" />
+                )}
+                <span>{user.role}</span>
+              </span>
+            </div>
+
+            <button
+              onClick={() => logout()}
+              className="inline-flex items-center space-x-1.5 bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-500/40 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              title="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-400 font-medium">
+            CS1207 OOP Lab
+          </div>
+        )}
+
+      </div>
+    </header>
+  );
+}
