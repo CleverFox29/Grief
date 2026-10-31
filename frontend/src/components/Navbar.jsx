@@ -1,8 +1,9 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, User, ShieldCheck, GraduationCap } from 'lucide-react';
+import NotificationDrawer from './NotificationDrawer';
 
-export default function Navbar() {
+export default function Navbar({ onSelectTicketFromNotification }) {
   const { user, logout } = useAuth();
 
   return (
@@ -27,7 +28,11 @@ export default function Navbar() {
 
         {/* User Info & Actions */}
         {user ? (
-          <div className="flex items-center space-x-3 sm:space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
+            
+            {/* Notification Drawer (F12) */}
+            <NotificationDrawer onSelectTicket={onSelectTicketFromNotification} />
+
             <div className="flex items-center space-x-2 text-right">
               <div className="hidden sm:block text-xs">
                 <p className="font-semibold text-slate-100">{user.name}</p>

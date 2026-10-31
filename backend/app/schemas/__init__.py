@@ -12,10 +12,16 @@ from app.schemas.auth import (
 )
 from app.schemas.ticket import (
     CategoryResponse,
+    StaffResponse,
     DuplicateCheckRequest,
     DuplicateMatch,
     DuplicateCheckResponse,
-    TicketResponse
+    TicketResponse,
+    TicketLogResponse,
+    TicketItemResponse,
+    TicketDetailResponse,
+    UpdateTicketRequest,
+    NotificationResponse
 )
 
 __all__ = [
@@ -28,8 +34,13 @@ __all__ = [
     "ChangePasswordRequest",
     "MessageResponse",
     "CategoryResponse",
+    "StaffResponse",
     "DuplicateCheckRequest",
     "DuplicateMatch",
     "DuplicateCheckResponse",
-    "TicketResponse"
+    "TicketLogResponse",
+    "TicketItemResponse",
+    "TicketDetailResponse",
+    "UpdateTicketRequest",
+    "NotificationResponse"
 ]
