@@ -1,7 +1,7 @@
-"""Ticket management and lifecycle service (F4, F5, F7, F8, F9, F10, F11, F12)."""
+"""Ticket management and lifecycle service (F4-F13)."""
 
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, case
@@ -11,6 +11,7 @@ from app.models import (
     TicketLog,
     Category,
     StaffRecord,
+    Feedback,
     Notification,
     AuditLog,
     AuditAction,
@@ -19,15 +20,19 @@ from app.models import (
     UserRole
 )
 from app.core.upload import validate_and_save_photo
+from app.config import settings
 from app.schemas.ticket import (
     TicketItemResponse,
     TicketDetailResponse,
     TicketLogResponse,
+    FeedbackResponse,
+    SubmitFeedbackRequest,
+    ReopenTicketRequest,
     UpdateTicketRequest
 )
 
 class TicketService:
-    """Service encapsulating ticket creation, triage, queue filtering, and cascading closures."""
+    """Service encapsulating ticket creation, triage, queue filtering, feedback, and 7-day reopen loop."""
 
     @staticmethod
     def generate_ticket_id(db: Session) -> str:
@@ -145,11 +150,29 @@ class TicketService:
         return new_ticket
 
     @staticmethod
-    def _build_ticket_item_response(t: Ticket) -> TicketItemResponse:
+    def _calculate_reopen_status(t: Ticket) -> Tuple[bool, Optional[int]]:
+        """Calculate if ticket is within 7-day reopen window and remaining days (F13)."""
+        if t.status != TicketStatus.RESOLVED.value or not t.resolved_at:
+            return False, None
+        
+        res_time = t.resolved_at
+        if res_time.tzinfo is None:
+            res_time = res_time.replace(tzinfo=timezone.utc)
+            
+        elapsed = datetime.now(timezone.utc) - res_time
+        remaining_days = settings.REOPEN_WINDOW_DAYS - elapsed.days
+        can_reopen = elapsed <= timedelta(days=settings.REOPEN_WINDOW_DAYS)
+        return can_reopen, max(0, remaining_days) if can_reopen else 0
+
+    @classmethod
+    def _build_ticket_item_response(cls, t: Ticket) -> TicketItemResponse:
         """Helper to transform Ticket entity to TicketItemResponse with nested duplicates."""
+        can_reopen, _ = cls._calculate_reopen_status(t)
+        
         duplicate_children = []
         if t.duplicate_tickets:
             for child in t.duplicate_tickets:
+                child_can_reopen, _ = cls._calculate_reopen_status(child)
                 duplicate_children.append(TicketItemResponse(
                     id=child.id,
                     ticket_id=child.ticket_id,
@@ -166,6 +189,9 @@ class TicketService:
                     parent_ticket_id=child.parent_ticket_id,
                     assigned_staff_id=child.assigned_staff_id,
                     assigned_staff_name=child.assigned_staff.name if child.assigned_staff else None,
+                    resolved_at=child.resolved_at,
+                    has_feedback=child.feedback is not None,
+                    can_reopen=child_can_reopen,
                     created_at=child.created_at,
                     updated_at=child.updated_at,
                     duplicate_count=0,
@@ -188,6 +214,9 @@ class TicketService:
             parent_ticket_id=t.parent_ticket_id,
             assigned_staff_id=t.assigned_staff_id,
             assigned_staff_name=t.assigned_staff.name if t.assigned_staff else None,
+            resolved_at=t.resolved_at,
+            has_feedback=t.feedback is not None,
+            can_reopen=can_reopen,
             created_at=t.created_at,
             updated_at=t.updated_at,
             duplicate_count=len(duplicate_children),
@@ -202,9 +231,7 @@ class TicketService:
         status_filter: Optional[str] = None,
         sort_order: str = "desc"
     ) -> List[TicketItemResponse]:
-        """
-        Retrieve all grievances filed by student, sorted by newest first (F8, U4).
-        """
+        """Retrieve all grievances filed by student, sorted by newest first (F8, U4)."""
         query = db.query(Ticket).filter(Ticket.student_id == student_id)
 
         if status_filter and status_filter.upper() != "ALL":
@@ -228,14 +255,9 @@ class TicketService:
         location: Optional[str] = None,
         sort_by: str = "oldest_unresolved"
     ) -> List[TicketItemResponse]:
-        """
-        Unified queue of all campus tickets across all categories (F9, F10, U5).
-        Groups duplicate tickets under parent tickets.
-        """
-        # Primary queue displays top-level tickets; child duplicates are embedded under parents
+        """Unified queue of all campus tickets across all categories (F9, F10, U5)."""
         query = db.query(Ticket).filter(Ticket.parent_ticket_id.is_(None))
 
-        # Search by Ticket ID or text (F9)
         if search and search.strip():
             term = f"%{search.strip()}%"
             query = query.filter(or_(
@@ -244,26 +266,20 @@ class TicketService:
                 Ticket.location.ilike(term)
             ))
 
-        # Filter by category (F10)
         if category_id:
             query = query.filter(Ticket.category_id == category_id)
 
-        # Filter by status (F10)
         if status_filter and status_filter.upper() != "ALL":
             query = query.filter(Ticket.status == status_filter.upper())
 
-        # Filter by location (F10)
         if location and location.strip():
             query = query.filter(Ticket.location.ilike(f"%{location.strip()}%"))
 
-        # Sorting rules (F10, U5)
         if sort_by == "newest":
             query = query.order_by(Ticket.created_at.desc())
         elif sort_by == "oldest":
             query = query.order_by(Ticket.created_at.asc())
         else:
-            # "oldest_unresolved" (U5 default: oldest unresolved first)
-            # Unresolved tickets (OPEN, IN PROGRESS) come before RESOLVED and CLOSED
             is_unresolved = case(
                 (Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]), 0),
                 else_=1
@@ -275,24 +291,19 @@ class TicketService:
 
     @classmethod
     def get_ticket_detail(cls, db: Session, ticket_id: int, current_user: User) -> TicketDetailResponse:
-        """
-        Retrieve complete ticket details and full timeline history (F8, U4, U6).
-        Enforces confidentiality and ownership checks.
-        """
+        """Retrieve complete ticket detail, timeline history, and feedback (F8, F13, U4, U7)."""
         ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not ticket:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
-        # Security check: Students can only view their own tickets (NFR 4.2)
         if current_user.role == UserRole.STUDENT.value:
             if ticket.student_id != current_user.id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-        # Confidentiality check: Confidential tickets are visible only to Admins (or author)
         if ticket.is_confidential and current_user.role != UserRole.ADMIN.value and ticket.student_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This ticket is marked confidential.")
 
-        # Build timeline logs
+        # Timeline logs
         logs_response = []
         for log in ticket.logs:
             performer = log.performed_by
@@ -307,8 +318,24 @@ class TicketService:
                 timestamp=log.timestamp
             ))
 
-        # Build nested duplicate children
+        # Duplicate children
         duplicate_children = [cls._build_ticket_item_response(c) for c in ticket.duplicate_tickets]
+
+        # Calculate reopen window
+        can_reopen, remaining_days = cls._calculate_reopen_status(ticket)
+
+        # Feedback
+        feedback_resp = None
+        if ticket.feedback:
+            feedback_resp = FeedbackResponse(
+                id=ticket.feedback.id,
+                ticket_id=ticket.feedback.ticket_id,
+                student_id=ticket.feedback.student_id,
+                student_name=ticket.student.name if ticket.student else "",
+                rating=ticket.feedback.rating,
+                comment=ticket.feedback.comment,
+                submitted_at=ticket.feedback.submitted_at
+            )
 
         return TicketDetailResponse(
             id=ticket.id,
@@ -335,6 +362,9 @@ class TicketService:
             closed_at=ticket.closed_at,
             created_at=ticket.created_at,
             updated_at=ticket.updated_at,
+            can_reopen=can_reopen,
+            reopen_remaining_days=remaining_days,
+            feedback=feedback_resp,
             logs=logs_response,
             duplicate_children=duplicate_children
         )
@@ -347,16 +377,12 @@ class TicketService:
         ticket_id: int,
         update_data: UpdateTicketRequest
     ) -> Ticket:
-        """
-        Update ticket status, assign maintenance worker, and add remark (F11, U6).
-        Cascades closure to all child duplicates when parent is closed.
-        Enforces optimistic concurrency control.
-        """
+        """Update ticket status, assign maintenance worker, and add remark (F11, U6)."""
         ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not ticket:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
-        # Optimistic concurrency check (U6 Exception: Two admins edit same ticket)
+        # Optimistic concurrency check
         if update_data.expected_updated_at:
             exp_time = update_data.expected_updated_at
             if exp_time.tzinfo is None:
@@ -365,7 +391,6 @@ class TicketService:
             if curr_time.tzinfo is None:
                 curr_time = curr_time.replace(tzinfo=timezone.utc)
             
-            # If difference > 1 second, reject save
             if abs((curr_time - exp_time).total_seconds()) > 1.0:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -377,7 +402,6 @@ class TicketService:
         staff_changed = False
         new_staff = None
 
-        # 1. Update Staff Assignment
         if update_data.assigned_staff_id is not None:
             if update_data.assigned_staff_id != ticket.assigned_staff_id:
                 new_staff = db.query(StaffRecord).filter(
@@ -389,7 +413,6 @@ class TicketService:
                 ticket.assigned_staff_id = new_staff.id
                 staff_changed = True
 
-        # 2. Update Status Transitions
         now = datetime.now(timezone.utc)
         if status_changed:
             target_status = update_data.status.upper()
@@ -403,7 +426,6 @@ class TicketService:
             elif target_status == TicketStatus.CLOSED.value:
                 ticket.closed_at = now
 
-        # 3. Create TicketLog entry (F11, NFR 4.2)
         action_name = "STATUS_UPDATE" if status_changed else ("ASSIGN_STAFF" if staff_changed else "ADMIN_REMARK")
         remark_text = update_data.remark.strip()
         if staff_changed and new_staff:
@@ -419,19 +441,15 @@ class TicketService:
         )
         db.add(log_entry)
 
-        # 4. Dispatch Student Notification (F12)
-        notification_msg = (
-            f"Ticket #{ticket.ticket_id} update: Status is now '{ticket.status}'. "
-            f"Remark: {update_data.remark}"
-        )
+        # Notify student (F12)
         notification = Notification(
             user_id=ticket.student_id,
             ticket_id=ticket.id,
-            message=notification_msg
+            message=f"Ticket #{ticket.ticket_id} update: Status is now '{ticket.status}'. Remark: {update_data.remark}"
         )
         db.add(notification)
 
-        # 5. Cascading closure to duplicate tickets (F11)
+        # Cascading closure (F11)
         if status_changed and ticket.status in [TicketStatus.CLOSED.value, TicketStatus.RESOLVED.value]:
             closed_children = ticket.cascade_close(
                 closed_by_user_id=admin_user.id,
@@ -454,6 +472,134 @@ class TicketService:
                     message=f"Ticket #{child.ticket_id} (linked to parent #{ticket.ticket_id}) has been {ticket.status}."
                 )
                 db.add(child_notify)
+
+        db.commit()
+        db.refresh(ticket)
+        return ticket
+
+    @classmethod
+    def submit_feedback(
+        cls,
+        db: Session,
+        student_user: User,
+        ticket_id: int,
+        feedback_data: SubmitFeedbackRequest
+    ) -> Feedback:
+        """
+        Record 1-5 star rating and comment on a RESOLVED grievance (F13, U7).
+        """
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+        # Ensure student owns the ticket
+        if ticket.student_id != student_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only review your own tickets.")
+
+        # Ensure status is RESOLVED or CLOSED
+        if ticket.status not in [TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Feedback can only be submitted for RESOLVED or CLOSED tickets (current status: {ticket.status})."
+            )
+
+        # Upsert feedback
+        existing_feedback = db.query(Feedback).filter(Feedback.ticket_id == ticket.id).first()
+        if existing_feedback:
+            existing_feedback.rating = feedback_data.rating
+            existing_feedback.comment = feedback_data.comment
+            feedback = existing_feedback
+        else:
+            feedback = Feedback(
+                ticket_id=ticket.id,
+                student_id=student_user.id,
+                rating=feedback_data.rating,
+                comment=feedback_data.comment
+            )
+            db.add(feedback)
+
+        # Record in timeline
+        log_entry = TicketLog(
+            ticket_id=ticket.id,
+            performed_by_id=student_user.id,
+            action="FEEDBACK_SUBMITTED",
+            old_status=ticket.status,
+            new_status=ticket.status,
+            remark=f"Student submitted {feedback_data.rating}★ rating. Comment: {feedback_data.comment or 'No comment'}"
+        )
+        db.add(log_entry)
+
+        # System audit
+        audit = AuditLog(
+            user_id=student_user.id,
+            action=AuditAction.FEEDBACK_SUBMITTED.value,
+            entity_type="TICKET",
+            entity_id=ticket.ticket_id,
+            details=f"Rating {feedback_data.rating}/5 submitted on ticket #{ticket.ticket_id}."
+        )
+        db.add(audit)
+
+        db.commit()
+        db.refresh(feedback)
+        return feedback
+
+    @classmethod
+    def reopen_ticket(
+        cls,
+        db: Session,
+        student_user: User,
+        ticket_id: int,
+        reopen_data: ReopenTicketRequest
+    ) -> Ticket:
+        """
+        Reopen a grievance within 7 days if the problem persists (F13, U7).
+        """
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+        if ticket.student_id != student_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only reopen your own tickets.")
+
+        # Check eligibility and 7-day window (F13, U7 Exception)
+        can_reopen, message = ticket.can_be_reopened()
+        if not can_reopen:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{message} If the problem persists, please raise a new ticket."
+            )
+
+        # Transition status to OPEN and clear resolved_at
+        ticket.reopen(reason=reopen_data.reason)
+
+        # Timeline entry
+        log_entry = TicketLog(
+            ticket_id=ticket.id,
+            performed_by_id=student_user.id,
+            action="TICKET_REOPENED",
+            old_status=TicketStatus.RESOLVED.value,
+            new_status=TicketStatus.OPEN.value,
+            remark=f"Reopened by student: {reopen_data.reason.strip()}"
+        )
+        db.add(log_entry)
+
+        # Notify student
+        notification = Notification(
+            user_id=student_user.id,
+            ticket_id=ticket.id,
+            message=f"Ticket #{ticket.ticket_id} has been reopened and placed back in the queue."
+        )
+        db.add(notification)
+
+        # System audit
+        audit = AuditLog(
+            user_id=student_user.id,
+            action=AuditAction.TICKET_REOPENED.value,
+            entity_type="TICKET",
+            entity_id=ticket.ticket_id,
+            details=f"Ticket #{ticket.ticket_id} reopened by student. Reason: {reopen_data.reason.strip()}"
+        )
+        db.add(audit)
 
         db.commit()
         db.refresh(ticket)

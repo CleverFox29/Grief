@@ -1,4 +1,4 @@
-"""Pydantic schemas for ticket creation, duplicate checks, triage, timeline, and staff."""
+"""Pydantic schemas for ticket creation, duplicate checks, triage, timeline, staff, feedback, and reopening."""
 
 from datetime import datetime
 from typing import Optional, List
@@ -78,6 +78,25 @@ class TicketLogResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class FeedbackResponse(BaseModel):
+    id: int
+    ticket_id: int
+    student_id: int
+    student_name: str
+    rating: int
+    comment: Optional[str] = None
+    submitted_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class SubmitFeedbackRequest(BaseModel):
+    rating: int = Field(..., ge=1, le=5, description="Star rating between 1 and 5 (F13)")
+    comment: Optional[str] = Field(None, max_length=1000, description="Optional qualitative feedback")
+
+class ReopenTicketRequest(BaseModel):
+    reason: str = Field(..., min_length=5, description="Reason why grievance remains unresolved (F13)")
+
 class TicketItemResponse(BaseModel):
     id: int
     ticket_id: str
@@ -94,6 +113,9 @@ class TicketItemResponse(BaseModel):
     parent_ticket_id: Optional[int] = None
     assigned_staff_id: Optional[int] = None
     assigned_staff_name: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+    has_feedback: bool = False
+    can_reopen: bool = False
     created_at: datetime
     updated_at: datetime
     duplicate_count: int = 0
@@ -127,6 +149,9 @@ class TicketDetailResponse(BaseModel):
     closed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    can_reopen: bool = False
+    reopen_remaining_days: Optional[int] = None
+    feedback: Optional[FeedbackResponse] = None
     logs: List[TicketLogResponse] = []
     duplicate_children: List[TicketItemResponse] = []
 

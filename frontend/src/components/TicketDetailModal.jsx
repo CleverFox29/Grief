@@ -13,6 +13,9 @@ import {
   HardHat, 
   Phone, 
   CopyCheck, 
+  Star,
+  RotateCcw,
+  Send,
   MessageSquare,
   Sparkles
 } from 'lucide-react';
@@ -23,26 +26,116 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (isOpen && ticketId) {
-      setLoading(true);
-      setError(null);
-      fetch(`/api/tickets/${ticketId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+  // Feedback states
+  const [selectedRating, setSelectedRating] = useState(5);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackSuccessMsg, setFeedbackSuccessMsg] = useState(null);
+
+  // Reopen states
+  const [isReopenPromptOpen, setIsReopenPromptOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+  const [actionError, setActionError] = useState(null);
+
+  const fetchDetails = () => {
+    if (!ticketId) return;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/tickets/${ticketId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load ticket details.');
+        return res.json();
+      })
+      .then(data => {
+        setTicket(data);
+        if (data.feedback) {
+          setSelectedRating(data.feedback.rating);
+          setFeedbackComment(data.feedback.comment || '');
         }
       })
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to load ticket details.');
-          return res.json();
-        })
-        .then(data => setTicket(data))
-        .catch(err => setError(err.message))
-        .finally(() => setLoading(false));
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (isOpen && ticketId) {
+      fetchDetails();
+      setIsReopenPromptOpen(false);
+      setReopenReason('');
+      setFeedbackSuccessMsg(null);
+      setActionError(null);
     }
   }, [isOpen, ticketId, token]);
 
   if (!isOpen) return null;
+
+  const handleSubmitFeedback = async (e) => {
+    e.preventDefault();
+    setFeedbackSubmitting(true);
+    setActionError(null);
+    try {
+      const resp = await fetch(`/api/tickets/${ticket.id}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          rating: selectedRating,
+          comment: feedbackComment.trim() || null
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Failed to submit feedback.');
+
+      setFeedbackSuccessMsg('Thank you! Your feedback has been recorded.');
+      fetchDetails();
+      onTicketUpdated && onTicketUpdated();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
+  const handleReopenTicket = async (e) => {
+    e.preventDefault();
+    if (!reopenReason.trim()) {
+      setActionError('Please provide a reason why this grievance remains unresolved.');
+      return;
+    }
+
+    setReopenSubmitting(true);
+    setActionError(null);
+    try {
+      const resp = await fetch(`/api/tickets/${ticket.id}/reopen`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          reason: reopenReason.trim()
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Failed to reopen ticket.');
+
+      setIsReopenPromptOpen(false);
+      setReopenReason('');
+      fetchDetails();
+      onTicketUpdated && onTicketUpdated();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setReopenSubmitting(false);
+    }
+  };
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -60,6 +153,9 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
   };
+
+  const isStudentOwner = user && ticket && user.role === 'STUDENT' && user.id === ticket.student_id;
+  const isResolved = ticket?.status === 'RESOLVED';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
@@ -132,6 +228,169 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
                 </div>
               </div>
 
+              {/* ACTION ERROR BANNER */}
+              {actionError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl p-3 flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{actionError}</span>
+                </div>
+              )}
+
+              {/* SUCCESS BANNER */}
+              {feedbackSuccessMsg && (
+                <div className="bg-teal-50 border border-teal-200 text-teal-800 text-xs rounded-xl p-3 flex items-start space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                  <span>{feedbackSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* POST-RESOLUTION ACTIONS (F13, U7) */}
+              {isStudentOwner && isResolved && (
+                <div className="bg-gradient-to-r from-emerald-50/80 to-teal-50/80 border border-emerald-200 rounded-2xl p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <h4 className="font-bold text-sm text-emerald-950 flex items-center space-x-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Resolution Completed by Administration</span>
+                      </h4>
+                      <p className="text-xs text-emerald-800 mt-0.5">
+                        Please review the work completed. You can rate the service or reopen the ticket if the problem persists.
+                      </p>
+                    </div>
+
+                    {/* Reopen Button or Expiration Badge (F13) */}
+                    <div>
+                      {ticket.can_reopen ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsReopenPromptOpen(!isReopenPromptOpen)}
+                          className="inline-flex items-center space-x-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-bold px-3.5 py-1.5 rounded-xl text-xs transition-colors shadow-sm"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Problem Persists? Reopen ({ticket.reopen_remaining_days}d left)</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 px-3 py-1 rounded-full">
+                          7-Day Reopen Window Expired
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Reopen Reason Prompt */}
+                  {isReopenPromptOpen && (
+                    <form onSubmit={handleReopenTicket} className="bg-white p-4 rounded-xl border border-rose-200 shadow-sm space-y-3 animate-fadeIn">
+                      <p className="text-xs font-semibold text-rose-900">
+                        Why does the problem persist? (Ticket will return to OPEN for admin inspection)
+                      </p>
+                      <textarea
+                        rows={2}
+                        value={reopenReason}
+                        onChange={(e) => setReopenReason(e.target.value)}
+                        placeholder="State why the fault is still present (e.g. Tap still drips water)..."
+                        required
+                        className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                      <div className="flex justify-end space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsReopenPromptOpen(false)}
+                          className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={reopenSubmitting}
+                          className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition-colors"
+                        >
+                          {reopenSubmitting ? 'Reopening...' : 'Confirm Reopen Ticket'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Rating & Feedback Form (F13) */}
+                  <div className="pt-3 border-t border-emerald-200/60">
+                    <h5 className="text-xs font-bold text-emerald-950 mb-2">
+                      {ticket.feedback ? 'Your Submitted Feedback:' : 'Rate the Resolution Service (1 to 5 Stars):'}
+                    </h5>
+
+                    {!ticket.feedback ? (
+                      <form onSubmit={handleSubmitFeedback} className="space-y-3">
+                        <div className="flex items-center space-x-1.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              type="button"
+                              key={star}
+                              onClick={() => setSelectedRating(star)}
+                              className="p-1 hover:scale-110 transition-transform"
+                            >
+                              <Star
+                                className={`w-6 h-6 ${
+                                  star <= selectedRating
+                                    ? 'text-amber-400 fill-amber-400'
+                                    : 'text-slate-300'
+                                }`}
+                              />
+                            </button>
+                          ))}
+                          <span className="text-xs font-semibold text-slate-700 ml-2">
+                            {selectedRating} of 5 Stars
+                          </span>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={feedbackComment}
+                            onChange={(e) => setFeedbackComment(e.target.value)}
+                            placeholder="Optional comment (e.g. Work was clean and fast)..."
+                            className="flex-1 text-xs px-3.5 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                          <button
+                            type="submit"
+                            disabled={feedbackSubmitting}
+                            className="inline-flex items-center space-x-1 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>{feedbackSubmitting ? 'Saving...' : 'Submit'}</span>
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="bg-white p-3.5 rounded-xl border border-emerald-200 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center space-x-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-4 h-4 ${
+                                  star <= ticket.feedback.rating
+                                    ? 'text-amber-400 fill-amber-400'
+                                    : 'text-slate-200'
+                                }`}
+                              />
+                            ))}
+                            <span className="text-xs font-bold text-slate-800 ml-1.5">
+                              {ticket.feedback.rating}/5 Stars
+                            </span>
+                          </div>
+                          {ticket.feedback.comment && (
+                            <p className="text-xs text-slate-600 mt-1 italic">
+                              "{ticket.feedback.comment}"
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(ticket.feedback.submitted_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Main Grievance Details */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 
@@ -171,7 +430,7 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
                     </div>
                   )}
 
-                  {/* Linked Duplicate Children (if parent) */}
+                  {/* Linked Duplicate Children */}
                   {ticket.duplicate_children && ticket.duplicate_children.length > 0 && (
                     <div className="pt-2">
                       <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2 flex items-center space-x-1">
@@ -197,8 +456,7 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
 
                   {ticket.parent_ticket_uid && (
                     <div className="bg-purple-50 border border-purple-200 text-purple-900 p-3 rounded-xl text-xs">
-                      <strong>Child Duplicate:</strong> This ticket is linked to parent grievance <strong>#{ticket.parent_ticket_uid}</strong>. 
-                      Closing the parent ticket will automatically cascade closure to this ticket.
+                      <strong>Child Duplicate:</strong> This ticket is linked to parent grievance <strong>#{ticket.parent_ticket_uid}</strong>.
                     </div>
                   )}
                 </div>
@@ -257,7 +515,6 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
                   <div className="relative border-l-2 border-slate-200 ml-3 space-y-6">
                     {ticket.logs.map((log, idx) => (
                       <div key={log.id} className="relative pl-6">
-                        {/* Dot on timeline */}
                         <div className="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-teal-500 border-2 border-white shadow-sm"></div>
 
                         <div>

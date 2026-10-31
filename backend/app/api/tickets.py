@@ -16,7 +16,10 @@ from app.schemas.ticket import (
     TicketItemResponse,
     TicketDetailResponse,
     UpdateTicketRequest,
-    NotificationResponse
+    NotificationResponse,
+    FeedbackResponse,
+    SubmitFeedbackRequest,
+    ReopenTicketRequest
 )
 from app.services.deduplication_service import DeduplicationEngine
 from app.services.ticket_service import TicketService
@@ -228,3 +231,52 @@ def mark_notification_as_read(
         notif.mark_as_read()
         db.commit()
     return {"success": True}
+
+
+# ----------------- Student Feedback & 7-Day Reopen (F13, U7) -----------------
+
+@router.post("/tickets/{ticket_id}/feedback", response_model=FeedbackResponse)
+def submit_ticket_feedback(
+    ticket_id: int,
+    request: SubmitFeedbackRequest,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db)
+):
+    """
+    Submit rating (1-5) and feedback comments on a RESOLVED grievance (F13, U7).
+    """
+    feedback = TicketService.submit_feedback(
+        db=db,
+        student_user=current_user,
+        ticket_id=ticket_id,
+        feedback_data=request
+    )
+    return FeedbackResponse(
+        id=feedback.id,
+        ticket_id=feedback.ticket_id,
+        student_id=feedback.student_id,
+        student_name=current_user.name,
+        rating=feedback.rating,
+        comment=feedback.comment,
+        submitted_at=feedback.submitted_at
+    )
+
+@router.post("/tickets/{ticket_id}/reopen", response_model=TicketDetailResponse)
+def reopen_grievance(
+    ticket_id: int,
+    request: ReopenTicketRequest,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db)
+):
+    """
+    Reopen a RESOLVED grievance within 7 days if problem persists (F13, U7).
+    Disables and rejects reopening once 7 days have passed.
+    """
+    reopened = TicketService.reopen_ticket(
+        db=db,
+        student_user=current_user,
+        ticket_id=ticket_id,
+        reopen_data=request
+    )
+    return TicketService.get_ticket_detail(db=db, ticket_id=reopened.id, current_user=current_user)
+
