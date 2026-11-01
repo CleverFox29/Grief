@@ -25,6 +25,7 @@
 5. [Quickstart & Installation](#5-quickstart--installation)
    - [Unified Launcher Script (Recommended)](#option-a-unified-launcher-script-recommended)
    - [Manual Step-by-Step Setup](#option-b-manual-step-by-step-setup)
+   - [Vercel Cloud Deployment](#option-c-vercel-cloud-deployment)
 6. [Demo Account Credentials for Lab Evaluation](#6-demo-account-credentials-for-lab-evaluation)
 7. [Step-by-Step Lab Evaluation Walkthroughs](#7-step-by-step-lab-evaluation-walkthroughs)
    - [Walkthrough 1: Student Login & 4-Step Grievance Submission](#walkthrough-1-student-login--4-step-grievance-submission-f1-f4-f5)
@@ -276,6 +277,23 @@ npm install
 # Launch Vite development server
 npm run dev
 ```
+
+---
+
+### Option C: Vercel Cloud Deployment
+
+CGAS is fully configured for deployment on [Vercel](https://vercel.com):
+
+1. **Import into Vercel**:
+   - Push your project to GitHub / GitLab / Bitbucket and import it at [vercel.com/new](https://vercel.com/new).
+   - Vercel automatically reads [`vercel.json`](file:///home/soham-roy/Documents/code/web/Grief/vercel.json) to build the Vite frontend (`frontend/dist`) and deploy the serverless Python API ([`api/index.py`](file:///home/soham-roy/Documents/code/web/Grief/api/index.py)).
+2. **Configure Environment Variables** (under *Project Settings* $\rightarrow$ *Environment Variables*):
+   - `MONGODB_URL`: Your MongoDB connection URI (e.g., MongoDB Atlas connection string `mongodb+srv://<user>:<password>@cluster0.mongodb.net/cgas_db?retryWrites=true&w=majority`).
+   - `MONGODB_DB_NAME`: `cgas_db`
+   - `SECRET_KEY`: A secure 256-bit random secret for JWT authentication.
+   - `AUTO_SEED`: `true` (automatically seeds initial categories, staff, and demo accounts upon first request if the MongoDB collection is empty).
+3. **Deploy**:
+   - Click **Deploy**. Your unified web application and REST API will be accessible globally.
 
 ---
 

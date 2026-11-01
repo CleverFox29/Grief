@@ -1,0 +1,26 @@
+# Virtual environments and caches
+backend/venv/
+backend/.pytest_cache/
+backend/tests/
+backend/uploads/
+backend/cgas.db
+*.db
+*.sqlite3
+__pycache__/
+*.pyc
+
+# Frontend dependencies and dev artifacts
+frontend/node_modules/
+frontend/.vite/
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.env
+
+# Local runner scripts and documentation PDFs
+*.pdf
+run_dev.sh
+run_dev.bat

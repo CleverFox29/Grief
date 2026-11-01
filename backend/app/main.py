@@ -18,6 +18,13 @@ async def lifespan(app: FastAPI):
     # Ensure uploads directory exists on startup
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     connect_db()
+    if os.getenv("AUTO_SEED", "false").lower() in ("true", "1"):
+        try:
+            from app.seed import seed_database
+            if Category.objects.count() == 0:
+                seed_database()
+        except Exception as e:
+            print(f"Auto-seeding error: {e}")
     yield
     disconnect_db()
 

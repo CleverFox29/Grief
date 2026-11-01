@@ -1,0 +1,10 @@
+{
+  "name": "cgas-campus-grievance-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Campus Grievance Addressal System (CGAS) - Monorepo for Vercel Deployment",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "dev": "cd frontend && npm run dev"
+  }
+}
