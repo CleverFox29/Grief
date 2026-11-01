@@ -1,53 +1,113 @@
 """Ticket entity representing student grievances and complete lifecycle state."""
 
+import weakref
 from datetime import datetime, timedelta, timezone
-from typing import Tuple, List
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
-from app.database import Base
+from typing import Tuple, List, Optional
+from mongoengine import (
+    Document,
+    StringField,
+    IntField,
+    BooleanField,
+    DateTimeField,
+    SequenceField
+)
 from app.models.base import TimestampMixin, utc_now
 from app.models.enums import TicketStatus
 from app.config import settings
 
-class Ticket(Base, TimestampMixin):
+class Ticket(Document, TimestampMixin):
     """
     Ticket entity representing a campus grievance (F4, F5).
     Maintains lifecycle status, assignment, duplicate linkages, and confidentiality.
     """
-    __tablename__ = "tickets"
+    meta = {
+        "collection": "tickets",
+        "indexes": [
+            "ticket_id",
+            "student_id",
+            "category_id",
+            "assigned_staff_id",
+            "parent_ticket_id",
+            "location",
+            "status",
+            "-created_at"
+        ]
+    }
 
-    id = Column(Integer, primary_key=True, index=True)
-    ticket_id = Column(String(50), unique=True, index=True, nullable=False)  # e.g. "TKT-2026-0001"
-    
-    # Foreign keys
-    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False, index=True)
-    assigned_staff_id = Column(Integer, ForeignKey("staff_records.id"), nullable=True)
-    parent_ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=True, index=True)
-    
-    # Details
-    location = Column(String(150), nullable=False, index=True)
-    description = Column(Text, nullable=False)
-    photo_url = Column(String(255), nullable=True)
-    is_confidential = Column(Boolean, default=False, nullable=False)  # Visible only to admins (F4)
-    status = Column(String(20), default=TicketStatus.OPEN.value, nullable=False, index=True)
-    is_flagged_duplicate = Column(Boolean, default=False, nullable=False)  # Submitted anyway flag (F7)
-    
-    # Timestamps for lifecycle milestones
-    resolved_at = Column(DateTime, nullable=True)
-    closed_at = Column(DateTime, nullable=True)
+    _registry = weakref.WeakValueDictionary()
 
-    # Relationships
-    student = relationship("User", foreign_keys=[student_id], backref="filed_tickets")
-    category = relationship("Category", back_populates="tickets")
-    assigned_staff = relationship("StaffRecord", back_populates="assigned_tickets")
+    id = SequenceField(primary_key=True)
+    ticket_id = StringField(required=True, unique=True, max_length=50)  # e.g. "TKT-2026-0001"
     
-    # Self-referencing relationship for duplicate linking (F7, F11)
-    parent_ticket = relationship("Ticket", remote_side=[id], backref="duplicate_tickets")
+    student_id = IntField(required=True)
+    category_id = IntField(required=True)
+    assigned_staff_id = IntField(null=True)
+    parent_ticket_id = IntField(null=True)
     
-    # Timeline and feedback
-    logs = relationship("TicketLog", back_populates="ticket", cascade="all, delete-orphan", order_by="TicketLog.timestamp.desc()")
-    feedback = relationship("Feedback", back_populates="ticket", uselist=False, cascade="all, delete-orphan")
+    location = StringField(required=True, max_length=150)
+    description = StringField(required=True)
+    photo_url = StringField(max_length=255, null=True)
+    is_confidential = BooleanField(default=False, required=True)
+    status = StringField(default=TicketStatus.OPEN.value, required=True, max_length=20)
+    is_flagged_duplicate = BooleanField(default=False, required=True)
+    
+    resolved_at = DateTimeField(null=True)
+    closed_at = DateTimeField(null=True)
+
+    def save(self, *args, **kwargs):
+        res = super().save(*args, **kwargs)
+        if self._data.get("id") is not None:
+            self._registry[self.id] = self
+        return res
+
+    @classmethod
+    def _from_son(cls, son, _auto_dereference=True, created=False):
+        doc = super()._from_son(son, _auto_dereference=_auto_dereference, created=created)
+        if doc.id in cls._registry:
+            existing = cls._registry[doc.id]
+            for k, v in doc._data.items():
+                existing._data[k] = v
+            return existing
+        cls._registry[doc.id] = doc
+        return doc
+
+    # Relationships as dynamic properties
+    @property
+    def student(self):
+        from app.models.user import User
+        return User.objects(id=self.student_id).first()
+
+    @property
+    def category(self):
+        from app.models.category import Category
+        return Category.objects(id=self.category_id).first()
+
+    @property
+    def assigned_staff(self):
+        if self.assigned_staff_id:
+            from app.models.staff import StaffRecord
+            return StaffRecord.objects(id=self.assigned_staff_id).first()
+        return None
+
+    @property
+    def parent_ticket(self):
+        if self.parent_ticket_id:
+            return Ticket.objects(id=self.parent_ticket_id).first()
+        return None
+
+    @property
+    def duplicate_tickets(self) -> List["Ticket"]:
+        return list(Ticket.objects(parent_ticket_id=self.id))
+
+    @property
+    def logs(self) -> List:
+        from app.models.ticket_log import TicketLog
+        return list(TicketLog.objects(ticket_id=self.id).order_by("-timestamp"))
+
+    @property
+    def feedback(self):
+        from app.models.feedback import Feedback
+        return Feedback.objects(ticket_id=self.id).first()
 
     def is_duplicate(self) -> bool:
         """Return True if this ticket is linked as a duplicate of another ticket."""
@@ -90,6 +150,8 @@ class Ticket(Base, TimestampMixin):
         
         self.status = TicketStatus.OPEN.value
         self.resolved_at = None
+        if self._data.get("id") is not None:
+            self.save()
 
     def link_to_parent(self, parent: "Ticket") -> None:
         """
@@ -97,6 +159,8 @@ class Ticket(Base, TimestampMixin):
         """
         self.parent_ticket_id = parent.id
         self.status = TicketStatus.DUPLICATE.value
+        if self._data.get("id") is not None:
+            self.save()
 
     def cascade_close(self, closed_by_user_id: int, remark: str = "Closed automatically with parent ticket.") -> List["Ticket"]:
         """
@@ -106,12 +170,14 @@ class Ticket(Base, TimestampMixin):
         now = datetime.now(timezone.utc)
         self.status = TicketStatus.CLOSED.value
         self.closed_at = now
+        self.save()
         
         closed_children = []
         for child in self.duplicate_tickets:
             if child.status != TicketStatus.CLOSED.value:
                 child.status = TicketStatus.CLOSED.value
                 child.closed_at = now
+                child.save()
                 closed_children.append(child)
                 
         return closed_children

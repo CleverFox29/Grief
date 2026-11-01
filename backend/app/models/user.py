@@ -1,38 +1,39 @@
 """User entity hierarchy demonstrating OOP principles (User -> Student, Admin)."""
 
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
-from app.database import Base
+from mongoengine import Document, StringField, IntField, BooleanField, DateTimeField, SequenceField
 from app.models.base import TimestampMixin, utc_now
 from app.models.enums import UserRole
 from app.core.security import hash_password, verify_password
 from app.config import settings
 
-class User(Base, TimestampMixin):
+class User(Document, TimestampMixin):
     """
     Base User entity.
     Encapsulates core authentication attributes, lockout logic, and credential management.
     """
-    __tablename__ = "users"
+    meta = {
+        "collection": "users",
+        "allow_inheritance": True,
+        "indexes": [
+            "user_id",
+            "email",
+            "role"
+        ]
+    }
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(50), unique=True, index=True, nullable=False)  # e.g. Student ID or Admin ID
-    name = Column(String(100), nullable=False)
-    email = Column(String(120), unique=True, index=True, nullable=False)
-    phone = Column(String(20), nullable=True)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default=UserRole.STUDENT.value)
+    id = SequenceField(primary_key=True)
+    user_id = StringField(required=True, unique=True, max_length=50)  # e.g. Student ID or Admin ID
+    name = StringField(required=True, max_length=100)
+    email = StringField(required=True, unique=True, max_length=120)
+    phone = StringField(max_length=20, null=True)
+    password_hash = StringField(required=True, max_length=255)
+    role = StringField(required=True, default=UserRole.STUDENT.value, max_length=20)
     
     # Account lockout & security tracking (F2)
-    failed_login_attempts = Column(Integer, default=0, nullable=False)
-    locked_until = Column(DateTime, nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
-    
-    # Single Table Inheritance discriminator
-    __mapper_args__ = {
-        "polymorphic_on": role,
-        "polymorphic_identity": "USER",
-    }
+    failed_login_attempts = IntField(default=0, required=True)
+    locked_until = DateTimeField(null=True)
+    is_active = BooleanField(default=True, required=True)
 
     def set_password(self, plain_password: str) -> None:
         """Hash and update user's password."""
@@ -46,7 +47,6 @@ class User(Base, TimestampMixin):
         """Check if account is currently locked due to failed attempts (F2)."""
         if self.locked_until:
             current_time = datetime.now(timezone.utc)
-            # Normalize naive datetime from SQLite if necessary
             lock_time = self.locked_until
             if lock_time.tzinfo is None:
                 lock_time = lock_time.replace(tzinfo=timezone.utc)
@@ -79,12 +79,13 @@ class Student(User):
     Student entity inheriting from User.
     Represents enrolled students or campus residents raising grievances.
     """
-    enrollment_no = Column(String(50), nullable=True)
-    hostel_room = Column(String(50), nullable=True)
+    enrollment_no = StringField(max_length=50, null=True)
+    hostel_room = StringField(max_length=50, null=True)
 
-    __mapper_args__ = {
-        "polymorphic_identity": UserRole.STUDENT.value,
-    }
+    def __init__(self, *args, **kwargs):
+        if "role" not in kwargs:
+            kwargs["role"] = UserRole.STUDENT.value
+        super().__init__(*args, **kwargs)
 
     def can_reopen_ticket(self, ticket) -> bool:
         """
@@ -105,12 +106,13 @@ class Admin(User):
     Admin entity inheriting from User.
     Represents administrative staff managing tickets, assignments, categories, and logs.
     """
-    department = Column(String(100), nullable=True)
-    admin_level = Column(String(50), default="STANDARD", nullable=True)
+    department = StringField(max_length=100, null=True)
+    admin_level = StringField(default="STANDARD", max_length=50, null=True)
 
-    __mapper_args__ = {
-        "polymorphic_identity": UserRole.ADMIN.value,
-    }
+    def __init__(self, *args, **kwargs):
+        if "role" not in kwargs:
+            kwargs["role"] = UserRole.ADMIN.value
+        super().__init__(*args, **kwargs)
 
     def can_manage_categories(self) -> bool:
         """Admins have permission to manage grievance categories."""

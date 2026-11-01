@@ -3,7 +3,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
 from app.models import User, Student, Admin, PasswordResetOTP, AuditLog, AuditAction, UserRole
 from app.core.security import hash_password, verify_password, generate_otp, create_access_token
@@ -13,13 +12,13 @@ class AuthService:
     """Service handling user authentication, account security, and OTP password recovery."""
 
     @staticmethod
-    def authenticate_user(db: Session, role: UserRole, user_id: str, password: str) -> User:
+    def authenticate_user(db, role: UserRole, user_id: str, password: str) -> User:
         """
         Authenticate user credentials according to F1 and F2.
         - F1: Validates role selection (Student vs Admin) and credentials.
         - F2: Tracks failed password attempts; locks account for 15 minutes after 5 failures.
         """
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = User.objects(user_id=user_id).first()
         
         # If user does not exist
         if not user:
@@ -67,15 +66,15 @@ class AuthService:
                     entity_id=user.user_id,
                     details=f"Account locked for {settings.ACCOUNT_LOCKOUT_MINUTES} minutes after 5 failed password attempts."
                 )
-                db.add(audit)
-                db.commit()
+                audit.save()
+                user.save()
                 
                 raise HTTPException(
                     status_code=status.HTTP_423_LOCKED,
                     detail=f"Invalid password. 5 failed attempts reached. Account is now locked for {settings.ACCOUNT_LOCKOUT_MINUTES} minutes."
                 )
             else:
-                db.commit()
+                user.save()
                 remaining = settings.MAX_FAILED_LOGIN_ATTEMPTS - user.failed_login_attempts
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -84,6 +83,8 @@ class AuthService:
 
         # Authentication successful: reset counters and log success
         user.reset_failed_attempts()
+        user.save()
+
         audit = AuditLog(
             user_id=user.id,
             action=AuditAction.USER_LOGIN.value,
@@ -91,17 +92,15 @@ class AuthService:
             entity_id=user.user_id,
             details=f"Successful login as {user.role}."
         )
-        db.add(audit)
-        db.commit()
-        db.refresh(user)
+        audit.save()
         return user
 
     @staticmethod
-    def request_password_reset_otp(db: Session, user_id: str) -> Tuple[PasswordResetOTP, str]:
+    def request_password_reset_otp(db, user_id: str) -> Tuple[PasswordResetOTP, str]:
         """
         Generate a 5-minute single-use OTP for password recovery (F3, NFR 4.2).
         """
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = User.objects(user_id=user_id).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -109,10 +108,10 @@ class AuthService:
             )
 
         # Invalidate any existing unused OTPs for this user
-        existing_otps = db.query(PasswordResetOTP).filter(
-            PasswordResetOTP.user_id == user.id,
-            PasswordResetOTP.is_used == False
-        ).all()
+        existing_otps = PasswordResetOTP.objects(
+            user_id=user.id,
+            is_used=False
+        )
         for otp in existing_otps:
             otp.mark_used()
 
@@ -126,7 +125,7 @@ class AuthService:
             expires_at=expires_at,
             is_used=False
         )
-        db.add(new_otp)
+        new_otp.save()
 
         audit = AuditLog(
             user_id=user.id,
@@ -135,20 +134,18 @@ class AuthService:
             entity_id=user.user_id,
             details=f"Password reset OTP generated. Valid for {settings.OTP_VALIDITY_MINUTES} minutes."
         )
-        db.add(audit)
-        db.commit()
-        db.refresh(new_otp)
+        audit.save()
 
         # In production this dispatches to Email / SMS gateway.
         # For academic lab and dev usage, we return the code for UI simulation.
         return new_otp, user.email
 
     @staticmethod
-    def reset_password_with_otp(db: Session, user_id: str, otp_code: str, new_password: str) -> User:
+    def reset_password_with_otp(db, user_id: str, otp_code: str, new_password: str) -> User:
         """
         Verify single-use OTP and update user password (F3, U2).
         """
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = User.objects(user_id=user_id).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -156,9 +153,9 @@ class AuthService:
             )
 
         # Fetch latest OTP issued for this user
-        otp = db.query(PasswordResetOTP).filter(
-            PasswordResetOTP.user_id == user.id
-        ).order_by(PasswordResetOTP.id.desc()).first()
+        otp = PasswordResetOTP.objects(
+            user_id=user.id
+        ).order_by("-id").first()
 
         if not otp or not otp.is_valid(otp_code):
             raise HTTPException(
@@ -170,6 +167,7 @@ class AuthService:
         user.set_password(new_password)
         otp.mark_used()
         user.reset_failed_attempts()
+        user.save()
 
         audit = AuditLog(
             user_id=user.id,
@@ -178,13 +176,11 @@ class AuthService:
             entity_id=user.user_id,
             details="Password successfully changed via verified OTP."
         )
-        db.add(audit)
-        db.commit()
-        db.refresh(user)
+        audit.save()
         return user
 
     @staticmethod
-    def change_password(db: Session, user: User, old_password: str, new_password: str) -> User:
+    def change_password(db, user: User, old_password: str, new_password: str) -> User:
         """
         Change password for an authenticated session after verifying the current password.
         """
@@ -195,6 +191,8 @@ class AuthService:
             )
 
         user.set_password(new_password)
+        user.save()
+
         audit = AuditLog(
             user_id=user.id,
             action=AuditAction.PASSWORD_CHANGED.value,
@@ -202,7 +200,5 @@ class AuthService:
             entity_id=user.user_id,
             details="Password changed from authenticated session."
         )
-        db.add(audit)
-        db.commit()
-        db.refresh(user)
+        audit.save()
         return user

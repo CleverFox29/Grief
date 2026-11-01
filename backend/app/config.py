@@ -11,8 +11,10 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
     
-    # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR.as_posix()}/cgas.db")
+    # Database (MongoDB)
+    MONGODB_URL: str = os.getenv("MONGODB_URL", os.getenv("DATABASE_URL", "mongodb://localhost:27017/cgas_db"))
+    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "cgas_db")
+    DATABASE_URL: str = MONGODB_URL
     
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "cgas-insecure-secret-key-change-in-production-cs1207")

@@ -2,7 +2,6 @@
 
 import time
 from typing import List, Dict, Any
-from sqlalchemy.orm import Session
 from rapidfuzz import fuzz
 
 from app.models import Ticket, TicketStatus
@@ -19,7 +18,7 @@ class DeduplicationEngine:
     @classmethod
     def check_duplicates(
         cls,
-        db: Session,
+        db,
         category_id: int,
         location: str,
         description: str,
@@ -33,11 +32,11 @@ class DeduplicationEngine:
         
         # Candidate pool: only open/unresolved tickets of the same category (SRS 3.2.3 Notes)
         unresolved_statuses = [TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]
-        candidates = db.query(Ticket).filter(
-            Ticket.category_id == category_id,
-            Ticket.status.in_(unresolved_statuses),
-            Ticket.parent_ticket_id.is_(None)  # Only compare against parent/primary tickets
-        ).all()
+        candidates = list(Ticket.objects(
+            category_id=category_id,
+            status__in=unresolved_statuses,
+            parent_ticket_id=None
+        ))
 
         if not candidates:
             return []

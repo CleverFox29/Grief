@@ -46,12 +46,13 @@ if [ ! -d "backend/venv" ]; then
     ./backend/venv/bin/pip install -r backend/requirements.txt
 fi
 
-# 4. Initialize database with seed data if not existing
-if [ ! -f "backend/cgas.db" ]; then
-    echo ""
-    echo "[SETUP] Initializing database schema and seeding demo accounts..."
-    ./backend/venv/bin/python backend/app/seed.py
-fi
+# 4. Initialize database with seed data if needed
+echo ""
+echo "[SETUP] Ensuring MongoDB connection and initial demo accounts..."
+./backend/venv/bin/python backend/app/seed.py || {
+    echo "[WARNING] Could not connect to MongoDB on default port (27017)."
+    echo "          Please ensure MongoDB is running ('mongod', 'systemctl start mongod', or set MONGODB_URL)."
+}
 
 # 5. Check frontend dependencies
 if [ ! -d "frontend/node_modules" ]; then

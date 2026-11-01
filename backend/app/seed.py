@@ -1,4 +1,4 @@
-"""Database initialization and initial dataset seeder."""
+"""Database initialization and initial dataset seeder for MongoDB."""
 
 import sys
 from pathlib import Path
@@ -7,7 +7,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from app.database import Base, engine, SessionLocal
+from app.database import connect_db
 from app.models import (
     Category,
     StaffRecord,
@@ -38,20 +38,24 @@ DEFAULT_STAFF = [
 ]
 
 def seed_database():
-    """Create tables and seed initial data."""
-    print("Creating database schema...")
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+    """Ensure indexes and seed initial data into MongoDB."""
+    print("Connecting to MongoDB and ensuring indexes...")
+    connect_db()
+
+    Category.ensure_indexes()
+    StaffRecord.ensure_indexes()
+    Student.ensure_indexes()
+    Admin.ensure_indexes()
+    AuditLog.ensure_indexes()
     
     try:
         # 1. Seed Categories
         category_map = {}
         for cat_data in DEFAULT_CATEGORIES:
-            existing = db.query(Category).filter_by(name=cat_data["name"]).first()
+            existing = Category.objects(name=cat_data["name"]).first()
             if not existing:
                 category = Category(name=cat_data["name"], description=cat_data["description"])
-                db.add(category)
-                db.flush()
+                category.save()
                 category_map[cat_data["name"]] = category
                 print(f"Added Category: {cat_data['name']}")
             else:
@@ -59,7 +63,7 @@ def seed_database():
 
         # 2. Seed Staff Records
         for staff in DEFAULT_STAFF:
-            existing_staff = db.query(StaffRecord).filter_by(name=staff["name"]).first()
+            existing_staff = StaffRecord.objects(name=staff["name"]).first()
             if not existing_staff:
                 cat = category_map.get(staff["category_name"])
                 staff_rec = StaffRecord(
@@ -68,11 +72,11 @@ def seed_database():
                     category_id=cat.id if cat else None,
                     notes=staff["notes"]
                 )
-                db.add(staff_rec)
+                staff_rec.save()
                 print(f"Added Staff: {staff['name']}")
 
         # 3. Seed Default Admin User
-        admin_user = db.query(Admin).filter_by(user_id="admin01").first()
+        admin_user = Admin.objects(user_id="admin01").first()
         if not admin_user:
             admin_user = Admin(
                 user_id="admin01",
@@ -84,11 +88,11 @@ def seed_database():
                 department="Campus Facilities & Maintenance",
                 admin_level="SUPER_ADMIN"
             )
-            db.add(admin_user)
+            admin_user.save()
             print("Added Default Admin: admin01 (password: Admin@123)")
 
         # 4. Seed Default Student User (Group II-8 authors)
-        student_user = db.query(Student).filter_by(user_id="25CSB0A22").first()
+        student_user = Student.objects(user_id="25CSB0A22").first()
         if not student_user:
             student_user = Student(
                 user_id="25CSB0A22",
@@ -100,7 +104,7 @@ def seed_database():
                 enrollment_no="25CSB0A22",
                 hostel_room="Hostel 3, Room 204"
             )
-            db.add(student_user)
+            student_user.save()
             print("Added Default Student: 25CSB0A22 (password: Student@123)")
 
         # 5. Log audit initialization
@@ -109,17 +113,13 @@ def seed_database():
             entity_type="SYSTEM",
             details="Database schema initialized with default categories, staff, and initial users."
         )
-        db.add(audit)
+        audit.save()
 
-        db.commit()
-        print("Database seeded successfully!")
+        print("MongoDB seeded successfully!")
 
     except Exception as e:
-        db.rollback()
         print(f"Error seeding database: {e}")
         raise e
-    finally:
-        db.close()
 
 if __name__ == "__main__":
     seed_database()

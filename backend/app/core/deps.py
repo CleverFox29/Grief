@@ -3,7 +3,6 @@
 from typing import List, Callable
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.security import decode_access_token
@@ -13,7 +12,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=Fals
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ) -> User:
     """
     Validate Bearer JWT token and return the currently authenticated user.
@@ -42,7 +41,7 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.query(User).filter(User.user_id == user_id).first()
+    user = User.objects(user_id=user_id).first()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

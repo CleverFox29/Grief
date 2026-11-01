@@ -1,10 +1,10 @@
 """Ticket management and lifecycle service (F4-F13)."""
 
+import re
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status, UploadFile
-from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, case
+from mongoengine import Q
 
 from app.models import (
     Ticket,
@@ -35,17 +35,17 @@ class TicketService:
     """Service encapsulating ticket creation, triage, queue filtering, feedback, and 7-day reopen loop."""
 
     @staticmethod
-    def generate_ticket_id(db: Session) -> str:
+    def generate_ticket_id(db = None) -> str:
         """Generate unique ticket ID in format TKT-YYYY-XXXX (F5)."""
         year = datetime.now(timezone.utc).year
-        count = db.query(func.count(Ticket.id)).scalar() or 0
+        count = Ticket.objects.count()
         sequence = count + 1
         return f"TKT-{year}-{sequence:04d}"
 
     @classmethod
     def create_ticket(
         cls,
-        db: Session,
+        db,
         student: User,
         category_id: int,
         location: str,
@@ -56,9 +56,9 @@ class TicketService:
         parent_ticket_id: Optional[int] = None
     ) -> Ticket:
         """Create a new campus grievance according to F4, F5, and F7."""
-        category = db.query(Category).filter(
-            Category.id == category_id,
-            Category.is_active == True
+        category = Category.objects(
+            id=category_id,
+            is_active=True
         ).first()
         if not category:
             raise HTTPException(
@@ -84,7 +84,7 @@ class TicketService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Parent ticket ID must be provided when supporting an existing ticket."
                 )
-            parent = db.query(Ticket).filter(Ticket.id == parent_ticket_id).first()
+            parent = Ticket.objects(id=parent_ticket_id).first()
             if not parent:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent ticket not found.")
             initial_status = TicketStatus.DUPLICATE.value
@@ -103,8 +103,7 @@ class TicketService:
             is_flagged_duplicate=is_flagged,
             parent_ticket_id=parent.id if parent else None
         )
-        db.add(new_ticket)
-        db.flush()
+        new_ticket.save()
 
         # Initial timeline entry
         if action == "SUPPORT" and parent:
@@ -125,7 +124,7 @@ class TicketService:
                 new_status=TicketStatus.OPEN.value,
                 remark="Grievance filed by student." + (" [Flagged as submit anyway]" if is_flagged else "")
             )
-        db.add(ticket_log)
+        ticket_log.save()
 
         # Notify student
         notification = Notification(
@@ -133,7 +132,7 @@ class TicketService:
             ticket_id=new_ticket.id,
             message=f"Your ticket #{new_ticket.ticket_id} ({category.name}) has been filed. Status: {new_ticket.status}."
         )
-        db.add(notification)
+        notification.save()
 
         # System audit
         audit = AuditLog(
@@ -143,10 +142,8 @@ class TicketService:
             entity_id=new_ticket.ticket_id,
             details=f"Ticket created in '{category.name}' at '{location}'. Status: {new_ticket.status}."
         )
-        db.add(audit)
+        audit.save()
 
-        db.commit()
-        db.refresh(new_ticket)
         return new_ticket
 
     @staticmethod
@@ -226,29 +223,28 @@ class TicketService:
     @classmethod
     def get_student_tickets(
         cls,
-        db: Session,
+        db,
         student_id: int,
         status_filter: Optional[str] = None,
         sort_order: str = "desc"
     ) -> List[TicketItemResponse]:
         """Retrieve all grievances filed by student, sorted by newest first (F8, U4)."""
-        query = db.query(Ticket).filter(Ticket.student_id == student_id)
+        qs = Ticket.objects(student_id=student_id)
 
         if status_filter and status_filter.upper() != "ALL":
-            query = query.filter(Ticket.status == status_filter.upper())
+            qs = qs.filter(status=status_filter.upper())
 
         if sort_order == "asc":
-            query = query.order_by(Ticket.created_at.asc())
+            tickets = list(qs.order_by("+created_at", "+id"))
         else:
-            query = query.order_by(Ticket.created_at.desc())
+            tickets = list(qs.order_by("-created_at", "-id"))
 
-        tickets = query.all()
         return [cls._build_ticket_item_response(t) for t in tickets]
 
     @classmethod
     def get_admin_queue(
         cls,
-        db: Session,
+        db,
         search: Optional[str] = None,
         category_id: Optional[int] = None,
         status_filter: Optional[str] = None,
@@ -256,43 +252,40 @@ class TicketService:
         sort_by: str = "oldest_unresolved"
     ) -> List[TicketItemResponse]:
         """Unified queue of all campus tickets across all categories (F9, F10, U5)."""
-        query = db.query(Ticket).filter(Ticket.parent_ticket_id.is_(None))
+        qs = Ticket.objects(parent_ticket_id=None)
 
         if search and search.strip():
-            term = f"%{search.strip()}%"
-            query = query.filter(or_(
-                Ticket.ticket_id.ilike(term),
-                Ticket.description.ilike(term),
-                Ticket.location.ilike(term)
-            ))
+            s = re.escape(search.strip())
+            qs = qs.filter(
+                Q(ticket_id__icontains=s) |
+                Q(description__icontains=s) |
+                Q(location__icontains=s)
+            )
 
         if category_id:
-            query = query.filter(Ticket.category_id == category_id)
+            qs = qs.filter(category_id=category_id)
 
         if status_filter and status_filter.upper() != "ALL":
-            query = query.filter(Ticket.status == status_filter.upper())
+            qs = qs.filter(status=status_filter.upper())
 
         if location and location.strip():
-            query = query.filter(Ticket.location.ilike(f"%{location.strip()}%"))
+            qs = qs.filter(location__icontains=re.escape(location.strip()))
 
         if sort_by == "newest":
-            query = query.order_by(Ticket.created_at.desc())
+            tickets = list(qs.order_by("-created_at", "-id"))
         elif sort_by == "oldest":
-            query = query.order_by(Ticket.created_at.asc())
+            tickets = list(qs.order_by("+created_at", "+id"))
         else:
-            is_unresolved = case(
-                (Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]), 0),
-                else_=1
-            )
-            query = query.order_by(is_unresolved.asc(), Ticket.created_at.asc())
+            tickets = list(qs)
+            unresolved = [TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]
+            tickets.sort(key=lambda t: (0 if t.status in unresolved else 1, t.created_at, t.id))
 
-        tickets = query.all()
         return [cls._build_ticket_item_response(t) for t in tickets]
 
     @classmethod
-    def get_ticket_detail(cls, db: Session, ticket_id: int, current_user: User) -> TicketDetailResponse:
+    def get_ticket_detail(cls, db, ticket_id: int, current_user: User) -> TicketDetailResponse:
         """Retrieve complete ticket detail, timeline history, and feedback (F8, F13, U4, U7)."""
-        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        ticket = Ticket.objects(id=ticket_id).first()
         if not ticket:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
@@ -372,13 +365,13 @@ class TicketService:
     @classmethod
     def update_ticket(
         cls,
-        db: Session,
+        db,
         admin_user: User,
         ticket_id: int,
         update_data: UpdateTicketRequest
     ) -> Ticket:
         """Update ticket status, assign maintenance worker, and add remark (F11, U6)."""
-        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        ticket = Ticket.objects(id=ticket_id).first()
         if not ticket:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
@@ -404,8 +397,8 @@ class TicketService:
 
         if update_data.assigned_staff_id is not None:
             if update_data.assigned_staff_id != ticket.assigned_staff_id:
-                new_staff = db.query(StaffRecord).filter(
-                    StaffRecord.id == update_data.assigned_staff_id
+                new_staff = StaffRecord.objects(
+                    id=update_data.assigned_staff_id
                 ).first()
                 if not new_staff:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member record not found.")
@@ -426,6 +419,8 @@ class TicketService:
             elif target_status == TicketStatus.CLOSED.value:
                 ticket.closed_at = now
 
+        ticket.save()
+
         action_name = "STATUS_UPDATE" if status_changed else ("ASSIGN_STAFF" if staff_changed else "ADMIN_REMARK")
         remark_text = update_data.remark.strip()
         if staff_changed and new_staff:
@@ -439,7 +434,7 @@ class TicketService:
             new_status=ticket.status,
             remark=remark_text
         )
-        db.add(log_entry)
+        log_entry.save()
 
         # Notify student (F12)
         notification = Notification(
@@ -447,7 +442,7 @@ class TicketService:
             ticket_id=ticket.id,
             message=f"Ticket #{ticket.ticket_id} update: Status is now '{ticket.status}'. Remark: {update_data.remark}"
         )
-        db.add(notification)
+        notification.save()
 
         # Cascading closure (F11)
         if status_changed and ticket.status in [TicketStatus.CLOSED.value, TicketStatus.RESOLVED.value]:
@@ -464,23 +459,21 @@ class TicketService:
                     new_status=child.status,
                     remark=f"Closed automatically because parent ticket #{ticket.ticket_id} was {ticket.status}."
                 )
-                db.add(child_log)
+                child_log.save()
                 
                 child_notify = Notification(
                     user_id=child.student_id,
                     ticket_id=child.id,
                     message=f"Ticket #{child.ticket_id} (linked to parent #{ticket.ticket_id}) has been {ticket.status}."
                 )
-                db.add(child_notify)
+                child_notify.save()
 
-        db.commit()
-        db.refresh(ticket)
         return ticket
 
     @classmethod
     def submit_feedback(
         cls,
-        db: Session,
+        db,
         student_user: User,
         ticket_id: int,
         feedback_data: SubmitFeedbackRequest
@@ -488,7 +481,7 @@ class TicketService:
         """
         Record 1-5 star rating and comment on a RESOLVED grievance (F13, U7).
         """
-        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        ticket = Ticket.objects(id=ticket_id).first()
         if not ticket:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
@@ -504,10 +497,11 @@ class TicketService:
             )
 
         # Upsert feedback
-        existing_feedback = db.query(Feedback).filter(Feedback.ticket_id == ticket.id).first()
+        existing_feedback = Feedback.objects(ticket_id=ticket.id).first()
         if existing_feedback:
             existing_feedback.rating = feedback_data.rating
             existing_feedback.comment = feedback_data.comment
+            existing_feedback.save()
             feedback = existing_feedback
         else:
             feedback = Feedback(
@@ -516,7 +510,7 @@ class TicketService:
                 rating=feedback_data.rating,
                 comment=feedback_data.comment
             )
-            db.add(feedback)
+            feedback.save()
 
         # Record in timeline
         log_entry = TicketLog(
@@ -527,7 +521,7 @@ class TicketService:
             new_status=ticket.status,
             remark=f"Student submitted {feedback_data.rating}★ rating. Comment: {feedback_data.comment or 'No comment'}"
         )
-        db.add(log_entry)
+        log_entry.save()
 
         # System audit
         audit = AuditLog(
@@ -537,16 +531,14 @@ class TicketService:
             entity_id=ticket.ticket_id,
             details=f"Rating {feedback_data.rating}/5 submitted on ticket #{ticket.ticket_id}."
         )
-        db.add(audit)
+        audit.save()
 
-        db.commit()
-        db.refresh(feedback)
         return feedback
 
     @classmethod
     def reopen_ticket(
         cls,
-        db: Session,
+        db,
         student_user: User,
         ticket_id: int,
         reopen_data: ReopenTicketRequest
@@ -554,7 +546,7 @@ class TicketService:
         """
         Reopen a grievance within 7 days if the problem persists (F13, U7).
         """
-        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        ticket = Ticket.objects(id=ticket_id).first()
         if not ticket:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
@@ -581,7 +573,7 @@ class TicketService:
             new_status=TicketStatus.OPEN.value,
             remark=f"Reopened by student: {reopen_data.reason.strip()}"
         )
-        db.add(log_entry)
+        log_entry.save()
 
         # Notify student
         notification = Notification(
@@ -589,7 +581,7 @@ class TicketService:
             ticket_id=ticket.id,
             message=f"Ticket #{ticket.ticket_id} has been reopened and placed back in the queue."
         )
-        db.add(notification)
+        notification.save()
 
         # System audit
         audit = AuditLog(
@@ -599,8 +591,6 @@ class TicketService:
             entity_id=ticket.ticket_id,
             details=f"Ticket #{ticket.ticket_id} reopened by student. Reason: {reopen_data.reason.strip()}"
         )
-        db.add(audit)
+        audit.save()
 
-        db.commit()
-        db.refresh(ticket)
         return ticket

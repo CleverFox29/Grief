@@ -5,8 +5,7 @@ import io
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from fastapi import HTTPException, status, UploadFile
-from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from mongoengine import Q
 
 from app.models import (
     User,
@@ -40,16 +39,16 @@ class AdminService:
     # ------------------ Student Master Records (F14) ------------------
 
     @classmethod
-    def create_student(cls, db: Session, admin_user: User, data: StudentCreateRequest) -> Student:
+    def create_student(cls, db, admin_user: User, data: StudentCreateRequest) -> Student:
         """Add a single student record with duplicate ID prevention (F14, U8)."""
-        existing_id = db.query(User).filter(User.user_id == data.user_id).first()
+        existing_id = User.objects(user_id=data.user_id.strip()).first()
         if existing_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"A user with ID '{data.user_id}' already exists. Duplicate student IDs are rejected."
             )
 
-        existing_email = db.query(User).filter(User.email == data.email).first()
+        existing_email = User.objects(email=str(data.email).strip().lower()).first()
         if existing_email:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -66,7 +65,7 @@ class AdminService:
             enrollment_no=data.enrollment_no.strip() if data.enrollment_no else data.user_id.strip(),
             hostel_room=data.hostel_room.strip() if data.hostel_room else None
         )
-        db.add(student)
+        student.save()
 
         audit = AuditLog(
             user_id=admin_user.id,
@@ -75,14 +74,12 @@ class AdminService:
             entity_id=student.user_id,
             details=f"Student record created: {student.name} ({student.user_id})."
         )
-        db.add(audit)
+        audit.save()
 
-        db.commit()
-        db.refresh(student)
         return student
 
     @classmethod
-    def import_students_csv(cls, db: Session, admin_user: User, file: UploadFile) -> CSVImportResponse:
+    def import_students_csv(cls, db, admin_user: User, file: UploadFile) -> CSVImportResponse:
         """
         Bulk import student records from CSV file (F14, U8).
         Validates structure and rejects duplicate student IDs.
@@ -144,7 +141,7 @@ class AdminService:
             seen_ids.add(user_id)
 
             # Duplicate check in Database
-            existing = db.query(User).filter(or_(User.user_id == user_id, User.email == email)).first()
+            existing = User.objects(Q(user_id=user_id) | Q(email=email)).first()
             if existing:
                 duplicates_rejected += 1
                 errors.append(f"Row {idx}: Student ID '{user_id}' or email '{email}' already registered.")
@@ -160,10 +157,8 @@ class AdminService:
                 enrollment_no=user_id,
                 hostel_room=room
             )
-            db.add(student)
+            student.save()
             imported_count += 1
-
-        db.flush()
 
         audit = AuditLog(
             user_id=admin_user.id,
@@ -171,8 +166,7 @@ class AdminService:
             entity_type="SYSTEM",
             details=f"Bulk student CSV imported: {imported_count} saved, {duplicates_rejected} duplicates rejected."
         )
-        db.add(audit)
-        db.commit()
+        audit.save()
 
         return CSVImportResponse(
             total_processed=total_processed,
@@ -185,7 +179,7 @@ class AdminService:
     # ------------------ Staff Master Records (F14) ------------------
 
     @classmethod
-    def create_staff(cls, db: Session, admin_user: User, data: StaffCreateRequest) -> StaffRecord:
+    def create_staff(cls, db, admin_user: User, data: StaffCreateRequest) -> StaffRecord:
         """Create a new maintenance/administrative worker record (F14, U8)."""
         staff = StaffRecord(
             name=data.name.strip(),
@@ -194,7 +188,7 @@ class AdminService:
             is_active=data.is_active,
             notes=data.notes.strip() if data.notes else None
         )
-        db.add(staff)
+        staff.save()
 
         audit = AuditLog(
             user_id=admin_user.id,
@@ -202,15 +196,13 @@ class AdminService:
             entity_type="STAFF",
             details=f"Staff record '{staff.name}' added."
         )
-        db.add(audit)
-        db.commit()
-        db.refresh(staff)
+        audit.save()
         return staff
 
     @classmethod
-    def update_staff(cls, db: Session, admin_user: User, staff_id: int, data: StaffUpdateRequest) -> StaffRecord:
+    def update_staff(cls, db, admin_user: User, staff_id: int, data: StaffUpdateRequest) -> StaffRecord:
         """Update staff member details."""
-        staff = db.query(StaffRecord).filter(StaffRecord.id == staff_id).first()
+        staff = StaffRecord.objects(id=staff_id).first()
         if not staff:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member not found.")
 
@@ -225,16 +217,15 @@ class AdminService:
         if data.notes is not None:
             staff.notes = data.notes.strip()
 
-        db.commit()
-        db.refresh(staff)
+        staff.save()
         return staff
 
     # ------------------ Grievance Categories (F14) ------------------
 
     @classmethod
-    def create_category(cls, db: Session, admin_user: User, data: CategoryCreateRequest) -> Category:
+    def create_category(cls, db, admin_user: User, data: CategoryCreateRequest) -> Category:
         """Add new grievance category (F14, U8)."""
-        existing = db.query(Category).filter(Category.name.ilike(data.name.strip())).first()
+        existing = Category.objects(name__iexact=data.name.strip()).first()
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Category '{data.name}' already exists.")
 
@@ -243,7 +234,7 @@ class AdminService:
             description=data.description.strip() if data.description else None,
             is_active=True
         )
-        db.add(cat)
+        cat.save()
 
         audit = AuditLog(
             user_id=admin_user.id,
@@ -251,15 +242,13 @@ class AdminService:
             entity_type="CATEGORY",
             details=f"Category '{cat.name}' created."
         )
-        db.add(audit)
-        db.commit()
-        db.refresh(cat)
+        audit.save()
         return cat
 
     @classmethod
-    def update_category(cls, db: Session, admin_user: User, category_id: int, data: CategoryUpdateRequest) -> Category:
+    def update_category(cls, db, admin_user: User, category_id: int, data: CategoryUpdateRequest) -> Category:
         """Edit category name or description."""
-        cat = db.query(Category).filter(Category.id == category_id).first()
+        cat = Category.objects(id=category_id).first()
         if not cat:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found.")
 
@@ -270,24 +259,24 @@ class AdminService:
         if data.is_active is not None:
             cat.is_active = data.is_active
 
+        cat.save()
+
         audit = AuditLog(
             user_id=admin_user.id,
             action=AuditAction.CATEGORY_UPDATED.value,
             entity_type="CATEGORY",
             details=f"Category '{cat.name}' updated."
         )
-        db.add(audit)
-        db.commit()
-        db.refresh(cat)
+        audit.save()
         return cat
 
     @classmethod
-    def delete_category(cls, db: Session, admin_user: User, category_id: int) -> Dict[str, str]:
+    def delete_category(cls, db, admin_user: User, category_id: int) -> Dict[str, str]:
         """
         Delete grievance category (F14, U8).
         Safeguard: A category with open tickets cannot be deleted.
         """
-        cat = db.query(Category).filter(Category.id == category_id).first()
+        cat = Category.objects(id=category_id).first()
         if not cat:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found.")
 
@@ -300,7 +289,7 @@ class AdminService:
             )
 
         cat_name = cat.name
-        db.delete(cat)
+        cat.delete()
 
         audit = AuditLog(
             user_id=admin_user.id,
@@ -308,8 +297,7 @@ class AdminService:
             entity_type="CATEGORY",
             details=f"Category '{cat_name}' deleted."
         )
-        db.add(audit)
-        db.commit()
+        audit.save()
         return {"message": f"Category '{cat_name}' successfully deleted."}
 
     # ------------------ Audit Logs & Reports (F15, U9) ------------------
@@ -317,7 +305,7 @@ class AdminService:
     @classmethod
     def get_audit_logs(
         cls,
-        db: Session,
+        db,
         limit: int = 100,
         action: Optional[str] = None,
         start_date: Optional[datetime] = None,
@@ -327,16 +315,16 @@ class AdminService:
         Retrieve immutable system audit logs (F15, NFR 4.2).
         Non-editable from the portal.
         """
-        query = db.query(AuditLog)
+        query = AuditLog.objects
 
         if action and action.strip():
-            query = query.filter(AuditLog.action == action.strip().upper())
+            query = query.filter(action=action.strip().upper())
         if start_date:
-            query = query.filter(AuditLog.timestamp >= start_date)
+            query = query.filter(timestamp__gte=start_date)
         if end_date:
-            query = query.filter(AuditLog.timestamp <= end_date)
+            query = query.filter(timestamp__lte=end_date)
 
-        logs = query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
+        logs = query.order_by("-timestamp").limit(limit)
 
         result = []
         for l in logs:
@@ -357,21 +345,21 @@ class AdminService:
     @classmethod
     def generate_report(
         cls,
-        db: Session,
+        db,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> ReportResponse:
         """
         Generate ticket summary report aggregated by category and status (F15, U9).
         """
-        query = db.query(Ticket)
+        query = Ticket.objects
         if start_date:
-            query = query.filter(Ticket.created_at >= start_date)
+            query = query.filter(created_at__gte=start_date)
         if end_date:
-            query = query.filter(Ticket.created_at <= end_date)
+            query = query.filter(created_at__lte=end_date)
 
-        tickets = query.all()
-        categories = db.query(Category).all()
+        tickets = list(query)
+        categories = list(Category.objects)
 
         summary_map: Dict[int, Dict[str, Any]] = {
             c.id: {
@@ -429,7 +417,7 @@ class AdminService:
     @classmethod
     def export_report_csv(
         cls,
-        db: Session,
+        db,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> str:

@@ -38,10 +38,8 @@ IF NOT EXIST "backend\venv" (
 )
 
 REM 4. Database initialization and seeding
-IF NOT EXIST "backend\cgas.db" (
-    echo [SETUP] Seeding database schema and demo accounts...
-    call backend\venv\Scripts\python.exe backend\app\seed.py
-)
+echo [SETUP] Ensuring MongoDB connection and initial demo accounts...
+call backend\venv\Scripts\python.exe backend\app\seed.py
 
 REM 5. Frontend node_modules check
 IF NOT EXIST "frontend\node_modules" (

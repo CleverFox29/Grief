@@ -1,34 +1,34 @@
-"""Database engine, session factory, and base declarations."""
+"""Database connection and session management for MongoDB."""
 
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import declarative_base, sessionmaker
+import mongoengine
 from app.config import settings
 
-# In SQLite, check_same_thread needs to be False for multi-threaded FastAPI workers
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+def connect_db(url: str = None, db_name: str = None, **kwargs):
+    """Establish connection to MongoDB if not already established."""
+    url = url or settings.MONGODB_URL
+    db_name = db_name or settings.MONGODB_DB_NAME
+    try:
+        return mongoengine.connection.get_connection("default")
+    except Exception:
+        pass
+    return mongoengine.connect(
+        db=db_name,
+        host=url,
+        alias="default",
+        **kwargs
+    )
 
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args=connect_args,
-    echo=False
-)
-
-# Enable foreign key constraints in SQLite
-if settings.DATABASE_URL.startswith("sqlite"):
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
+def disconnect_db(alias: str = "default"):
+    """Disconnect from MongoDB."""
+    try:
+        mongoengine.disconnect(alias=alias)
+    except Exception:
+        pass
 
 def get_db():
-    """Dependency for obtaining database session per request."""
-    db = SessionLocal()
+    """Dependency for obtaining MongoDB database per request."""
     try:
+        db = mongoengine.connection.get_db()
         yield db
-    finally:
-        db.close()
+    except Exception:
+        yield None

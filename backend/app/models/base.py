@@ -1,7 +1,7 @@
-"""Base declarations and reusable mixins."""
+"""Base declarations and reusable mixins for MongoEngine documents."""
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime
+from mongoengine import DateTimeField
 
 def utc_now() -> datetime:
     """Return timezone-aware current UTC time."""
@@ -9,5 +9,10 @@ def utc_now() -> datetime:
 
 class TimestampMixin:
     """Mixin adding created_at and updated_at timestamps to entities."""
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    created_at = DateTimeField(default=utc_now, required=True)
+    updated_at = DateTimeField(default=utc_now, required=True)
+
+    def clean(self):
+        if hasattr(super(), "clean"):
+            super().clean()
+        self.updated_at = utc_now()

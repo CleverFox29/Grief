@@ -208,7 +208,7 @@ Per SRS Section 5 (**Portability: The system shall run on Windows and Linux serv
 
 1. **Path Handling**:
    - Uses Python's `pathlib.Path` across configuration, database URI construction, and photo storage.
-   - SQLite connection URIs are formatted using `BASE_DIR.as_posix()` to guarantee standard forward slashes (`/`), avoiding Windows backslash escape errors (`\` $\rightarrow$ `\u00...`).
+   - Database connection URIs support standard MongoDB connection protocols (`mongodb://` or `mongodb+srv://`) seamlessly across Windows and Linux.
 2. **Line-Ending Agnostic**:
    - The CSV bulk import service transparently parses both Windows CRLF (`\r\n`) and Linux/macOS LF (`\n`) formats without parsing exceptions.
 3. **Platform Launchers**:
@@ -407,7 +407,7 @@ cd backend
 | [`test_feedback_reopen.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_feedback_reopen.py) | 5 | 1–5 star rating validation (F13), 7-day reopen window, student authorization checks |
 | [`test_admin_records.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_admin_records.py) | 6 | Single student CRUD, bulk CSV import (F14), category safety rules, CSV reports (F15) |
 | [`test_security_performance.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_security_performance.py) | 4 | SQL injection defense, confidential ticket privacy, $< 2$s deduplication benchmark |
-| [`test_cross_platform.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_cross_platform.py) | 4 | Windows & Linux compatibility (NFR 5), SQLite posix URI, CRLF/LF line-endings |
+| [`test_cross_platform.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_cross_platform.py) | 4 | Windows & Linux compatibility (NFR 5), MongoDB URI format, CRLF/LF line-endings |
 | **Total** | **45** | **100% Passing Test Suite** |
 
 ---
@@ -445,8 +445,7 @@ Grief/
 ├── README.md                      # Complete system documentation
 ├── backend/
 │   ├── pytest.ini                 # Pytest configuration
-│   ├── requirements.txt           # Python backend dependencies
-│   ├── cgas.db                    # SQLite production/dev database
+│   ├── requirements.txt           # Python backend dependencies (MongoEngine, PyMongo, FastAPI)
 │   ├── uploads/                   # Secure storage for grievance photos
 │   ├── app/
 │   │   ├── config.py              # Application settings & environment paths

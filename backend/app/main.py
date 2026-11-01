@@ -6,11 +6,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 
 from app.config import settings
-from app.database import get_db
+from app.database import get_db, connect_db, disconnect_db
 from app.models import Category
 from app.api import auth_router, tickets_router, admin_router
 
@@ -19,7 +17,9 @@ from app.api import auth_router, tickets_router, admin_router
 async def lifespan(app: FastAPI):
     # Ensure uploads directory exists on startup
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    connect_db()
     yield
+    disconnect_db()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -57,12 +57,13 @@ def read_root():
     }
 
 @app.get("/api/health", tags=["Health"])
-def health_check(db: Session = Depends(get_db)):
+def health_check(db = Depends(get_db)):
     """Health check verifying database connectivity and configuration."""
     try:
-        # Check database connection
-        db.execute(text("SELECT 1"))
-        category_count = db.query(Category).count()
+        if db is None:
+            raise ConnectionError("No active MongoDB database session.")
+        db.command("ping")
+        category_count = Category.objects.count()
         return {
             "status": "healthy",
             "database": "connected",

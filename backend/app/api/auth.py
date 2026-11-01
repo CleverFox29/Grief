@@ -2,7 +2,6 @@
 
 from datetime import timedelta
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.auth import (
@@ -24,7 +23,7 @@ from app.config import settings
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/login", response_model=TokenResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
+def login(request: LoginRequest, db = Depends(get_db)):
     """
     Authenticate user with role selection (Student vs Admin) and ID/password (F1, F2).
     Enforces account lockout on 5 failed attempts.
@@ -82,7 +81,7 @@ def get_current_authenticated_user(current_user: User = Depends(get_current_user
     )
 
 @router.post("/request-otp", response_model=RequestOTPResponse)
-def request_password_reset_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
+def request_password_reset_otp(request: RequestOTPRequest, db = Depends(get_db)):
     """
     Request a 5-minute single-use OTP for password recovery (F3, U2).
     """
@@ -95,7 +94,7 @@ def request_password_reset_otp(request: RequestOTPRequest, db: Session = Depends
     )
 
 @router.post("/reset-password", response_model=MessageResponse)
-def reset_password_with_otp(request: ResetPasswordWithOTPRequest, db: Session = Depends(get_db)):
+def reset_password_with_otp(request: ResetPasswordWithOTPRequest, db = Depends(get_db)):
     """
     Verify single-use OTP and reset user password (F3, U2).
     """
@@ -113,7 +112,7 @@ def reset_password_with_otp(request: ResetPasswordWithOTPRequest, db: Session = 
 def change_password(
     request: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """
     Change password from an active authenticated session.

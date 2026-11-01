@@ -1,31 +1,41 @@
 """Category entity representing grievance categories."""
 
-from typing import Tuple
-from sqlalchemy import Column, Integer, String, Text, Boolean
-from sqlalchemy.orm import relationship
-from app.database import Base
+from typing import Tuple, List
+from mongoengine import Document, StringField, BooleanField, SequenceField
 from app.models.base import TimestampMixin
 from app.models.enums import TicketStatus
 
-class Category(Base, TimestampMixin):
+class Category(Document, TimestampMixin):
     """
     Grievance Category entity (e.g. Plumbing, Electrical, Carpentry, Masonry, Administrative, Security).
     """
-    __tablename__ = "categories"
+    meta = {
+        "collection": "categories",
+        "indexes": ["name", "is_active"]
+    }
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(50), unique=True, index=True, nullable=False)
-    description = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
+    id = SequenceField(primary_key=True)
+    name = StringField(required=True, unique=True, max_length=50)
+    description = StringField(null=True)
+    is_active = BooleanField(default=True, required=True)
 
-    # Relationships
-    tickets = relationship("Ticket", back_populates="category", cascade="all, delete-orphan")
-    staff_members = relationship("StaffRecord", back_populates="category")
+    @property
+    def tickets(self) -> List:
+        """Return tickets belonging to this category."""
+        from app.models.ticket import Ticket
+        return list(Ticket.objects(category_id=self.id))
+
+    @property
+    def staff_members(self) -> List:
+        """Return staff members assigned to this category."""
+        from app.models.staff import StaffRecord
+        return list(StaffRecord.objects(category_id=self.id))
 
     def has_active_tickets(self) -> bool:
         """Check if category has unresolved (OPEN or IN PROGRESS) tickets."""
-        active_statuses = {TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value}
-        return any(t.status in active_statuses for t in self.tickets)
+        from app.models.ticket import Ticket
+        active_statuses = [TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]
+        return Ticket.objects(category_id=self.id, status__in=active_statuses).count() > 0
 
     def can_be_deleted(self) -> Tuple[bool, str]:
         """

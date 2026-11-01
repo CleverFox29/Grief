@@ -17,9 +17,9 @@ from app.services.admin_service import AdminService
 from app.models import UserRole, Admin
 
 def test_database_url_cross_platform_format():
-    """NFR 5: DATABASE_URL must use forward slashes (posix) for SQLite URI compatibility on Windows and Linux."""
-    assert "\\" not in settings.DATABASE_URL
-    assert settings.DATABASE_URL.startswith("sqlite:///")
+    """NFR 5: MongoDB connection string must follow valid URI format for Windows and Linux."""
+    assert "\\" not in settings.MONGODB_URL
+    assert settings.MONGODB_URL.startswith("mongodb://") or settings.MONGODB_URL.startswith("mongodb+srv://")
 
 def test_upload_dir_pathlib_resolution():
     """NFR 5: UPLOAD_DIR must be a valid directory path derived via pathlib."""

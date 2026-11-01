@@ -2,7 +2,6 @@
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Form, File, UploadFile, Query, status, HTTPException
-from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.deps import get_current_user, require_student, require_admin
@@ -29,21 +28,30 @@ router = APIRouter(prefix="", tags=["Grievances"])
 # ----------------- Category & Staff Reference Endpoints -----------------
 
 @router.get("/categories", response_model=List[CategoryResponse])
-def get_active_categories(db: Session = Depends(get_db)):
+def get_active_categories(db = Depends(get_db)):
     """Retrieve list of all active grievance categories (F4)."""
-    return db.query(Category).filter(Category.is_active == True).order_by(Category.name.asc()).all()
+    categories = Category.objects(is_active=True).order_by("+name")
+    return [
+        CategoryResponse(
+            id=c.id,
+            name=c.name,
+            description=c.description,
+            is_active=c.is_active
+        )
+        for c in categories
+    ]
 
 @router.get("/staff", response_model=List[StaffResponse])
 def get_staff_records(
     category_id: Optional[int] = None,
     current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Retrieve staff members for ticket assignment (Admin only)."""
-    query = db.query(StaffRecord).filter(StaffRecord.is_active == True)
+    query = StaffRecord.objects(is_active=True)
     if category_id:
-        query = query.filter(StaffRecord.category_id == category_id)
-    staff_list = query.order_by(StaffRecord.name.asc()).all()
+        query = query.filter(category_id=category_id)
+    staff_list = query.order_by("+name")
     
     result = []
     for s in staff_list:
@@ -65,7 +73,7 @@ def get_staff_records(
 def check_ticket_duplicates(
     request: DuplicateCheckRequest,
     current_user: User = Depends(require_student),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Real-time duplicate detection (< 2s) comparing open tickets (F6)."""
     matches = DeduplicationEngine.check_duplicates(
@@ -90,7 +98,7 @@ def raise_grievance(
     parent_ticket_id: Optional[int] = Form(None),
     photo: Optional[UploadFile] = File(None),
     current_user: User = Depends(require_student),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Submit a campus grievance ticket (F4, F5, F7, U3)."""
     ticket = TicketService.create_ticket(
@@ -130,7 +138,7 @@ def get_my_tickets(
     status: Optional[str] = Query(None, description="Filter by status: OPEN, IN PROGRESS, RESOLVED, CLOSED, DUPLICATE"),
     sort: str = Query("desc", description="Sort order: desc (newest first) or asc (oldest first)"),
     current_user: User = Depends(require_student),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Retrieve all tickets filed by authenticated student (F8, U4)."""
     return TicketService.get_student_tickets(
@@ -148,7 +156,7 @@ def get_admin_ticket_queue(
     location: Optional[str] = Query(None, description="Filter by location"),
     sort: str = Query("oldest_unresolved", description="Sort by: oldest_unresolved, newest, oldest"),
     current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """
     Unified admin ticket queue across all categories with search and multi-filtering (F9, F10, U5).
@@ -167,7 +175,7 @@ def get_admin_ticket_queue(
 def get_ticket_details(
     ticket_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Retrieve complete ticket detail and full timeline audit history (F8, U4, U6)."""
     return TicketService.get_ticket_detail(db=db, ticket_id=ticket_id, current_user=current_user)
@@ -177,7 +185,7 @@ def update_ticket_triage(
     ticket_id: int,
     request: UpdateTicketRequest,
     current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """
     Update ticket status, assign staff member, and record mandatory remark (F11, U6).
@@ -197,12 +205,12 @@ def update_ticket_triage(
 @router.get("/notifications", response_model=List[NotificationResponse])
 def get_user_notifications(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Retrieve notifications for the current authenticated user (F12)."""
-    notifications = db.query(Notification).filter(
-        Notification.user_id == current_user.id
-    ).order_by(Notification.created_at.desc()).limit(30).all()
+    notifications = Notification.objects(
+        user_id=current_user.id
+    ).order_by("-created_at").limit(30)
 
     result = []
     for n in notifications:
@@ -220,16 +228,15 @@ def get_user_notifications(
 def mark_notification_as_read(
     notification_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Mark a notification as read."""
-    notif = db.query(Notification).filter(
-        Notification.id == notification_id,
-        Notification.user_id == current_user.id
+    notif = Notification.objects(
+        id=notification_id,
+        user_id=current_user.id
     ).first()
     if notif:
         notif.mark_as_read()
-        db.commit()
     return {"success": True}
 
 
@@ -240,7 +247,7 @@ def submit_ticket_feedback(
     ticket_id: int,
     request: SubmitFeedbackRequest,
     current_user: User = Depends(require_student),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """
     Submit rating (1-5) and feedback comments on a RESOLVED grievance (F13, U7).
@@ -266,7 +273,7 @@ def reopen_grievance(
     ticket_id: int,
     request: ReopenTicketRequest,
     current_user: User = Depends(require_student),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """
     Reopen a RESOLVED grievance within 7 days if problem persists (F13, U7).
@@ -279,4 +286,3 @@ def reopen_grievance(
         reopen_data=request
     )
     return TicketService.get_ticket_detail(db=db, ticket_id=reopened.id, current_user=current_user)
-

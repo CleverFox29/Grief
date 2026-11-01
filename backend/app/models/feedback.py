@@ -1,37 +1,44 @@
 """Feedback entity representing student rating and remarks on resolved grievances."""
 
-from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, CheckConstraint
-from sqlalchemy.orm import relationship
-from app.database import Base
+from mongoengine import Document, StringField, IntField, DateTimeField, SequenceField
 from app.models.base import utc_now
 
-class Feedback(Base):
+class Feedback(Document):
     """
     Student rating and feedback submitted on a RESOLVED grievance (F13 / U7).
     Rating must be between 1 and 5.
     """
-    __tablename__ = "feedbacks"
+    meta = {
+        "collection": "feedbacks",
+        "indexes": [
+            "ticket_id",
+            "student_id",
+            "-submitted_at"
+        ]
+    }
 
-    id = Column(Integer, primary_key=True, index=True)
-    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="CASCADE"), unique=True, nullable=False)
-    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    id = SequenceField(primary_key=True)
+    ticket_id = IntField(required=True, unique=True)
+    student_id = IntField(required=True)
     
-    rating = Column(Integer, nullable=False)
-    comment = Column(Text, nullable=True)
-    submitted_at = Column(DateTime, default=utc_now, nullable=False)
-
-    __table_args__ = (
-        CheckConstraint("rating >= 1 AND rating <= 5", name="check_valid_rating_range"),
-    )
-
-    # Relationships
-    ticket = relationship("Ticket", back_populates="feedback")
-    student = relationship("User")
+    rating = IntField(required=True, min_value=1, max_value=5)
+    comment = StringField(null=True)
+    submitted_at = DateTimeField(default=utc_now, required=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.rating is not None and not (1 <= self.rating <= 5):
             raise ValueError(f"Rating must be an integer between 1 and 5. Received: {self.rating}")
+
+    @property
+    def ticket(self):
+        from app.models.ticket import Ticket
+        return Ticket.objects(id=self.ticket_id).first()
+
+    @property
+    def student(self):
+        from app.models.user import User
+        return User.objects(id=self.student_id).first()
 
     def __repr__(self) -> str:
         return f"<Feedback ticket_id={self.ticket_id} rating={self.rating}>"
