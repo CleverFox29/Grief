@@ -54,6 +54,9 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 @app.get("/", tags=["Root"])
+@app.get("/api", tags=["Root"])
+@app.get("/api/index", tags=["Root"])
+@app.get("/api/index.py", tags=["Root"])
 def read_root():
     """System information and operational status."""
     return {
