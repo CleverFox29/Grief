@@ -29,6 +29,9 @@ def get_db():
     """Dependency for obtaining MongoDB database per request."""
     try:
         db = mongoengine.connection.get_db()
-        yield db
     except Exception:
-        yield None
+        db = None
+    try:
+        yield db
+    finally:
+        pass

@@ -37,6 +37,24 @@ export function AuthProvider({ children }) {
     };
   }, [token]);
 
+  // Global 401 Unauthorized interceptor to gracefully handle expired/invalid sessions
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (response.status === 401) {
+        const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+        if (!url.includes('/api/auth/login')) {
+          logout("Your session has expired or token is invalid. Please log in again.");
+        }
+      }
+      return response;
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
+
   const login = async (role, userId, password) => {
     setLoading(true);
     setSessionWarning(null);

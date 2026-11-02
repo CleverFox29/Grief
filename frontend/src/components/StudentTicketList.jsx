@@ -34,8 +34,8 @@ export default function StudentTicketList({ onOpenRaiseModal }) {
     fetch(`/api/tickets/my-tickets?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
-      .then(r => r.json())
-      .then(data => setTickets(data))
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setTickets(Array.isArray(data) ? data : []))
       .catch(console.error)
       .finally(() => setLoading(false));
   };

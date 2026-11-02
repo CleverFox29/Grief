@@ -50,8 +50,8 @@ export default function AdminTicketQueue() {
   // Load categories
   useEffect(() => {
     fetch('/api/categories')
-      .then(r => r.json())
-      .then(cats => setCategories(cats))
+      .then(r => r.ok ? r.json() : [])
+      .then(cats => setCategories(Array.isArray(cats) ? cats : []))
       .catch(console.error);
   }, []);
 
@@ -67,8 +67,8 @@ export default function AdminTicketQueue() {
     fetch(`/api/tickets/admin-queue?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
-      .then(r => r.json())
-      .then(data => setTickets(data))
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setTickets(Array.isArray(data) ? data : []))
       .catch(console.error)
       .finally(() => setLoading(false));
   };

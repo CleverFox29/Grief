@@ -12,8 +12,8 @@ export default function NotificationDrawer({ onSelectTicket }) {
     fetch('/api/notifications', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
-      .then(r => r.json())
-      .then(data => setNotifications(data))
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setNotifications(Array.isArray(data) ? data : []))
       .catch(console.error);
   };
 
