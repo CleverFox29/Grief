@@ -1,5 +1,6 @@
 """User entity hierarchy demonstrating OOP principles (User -> Student, Admin)."""
 
+from typing import Optional
 from datetime import datetime, timedelta, timezone
 from mongoengine import Document, StringField, IntField, BooleanField, DateTimeField, SequenceField
 from app.models.base import TimestampMixin, utc_now
