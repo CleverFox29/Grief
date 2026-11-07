@@ -32,3 +32,8 @@ yarn-error.log*
 # Uploads
 uploads/
 backend/uploads/
+
+# Local Project MongoDB
+.mongodb_data/
+data/
+*.log

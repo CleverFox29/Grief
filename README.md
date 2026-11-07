@@ -222,7 +222,18 @@ Per SRS Section 5 (**Portability: The system shall run on Windows and Linux serv
 
 ## 5. Quickstart & Installation
 
-### Option A: Unified Launcher Script (Recommended)
+### Option A: Docker Compose (All-in-One Containerized Stack)
+Run the entire project stack including the MongoDB database server, backend API, and Vite frontend with a single command:
+```bash
+docker compose up
+```
+* **Web Portal**: [http://localhost:5173](http://localhost:5173)
+* **Backend API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+* **MongoDB Server**: Running in container `cgas_mongodb` on `localhost:27017` with persistent volume `mongodb_data`.
+
+---
+
+### Option B: Unified Launcher Script (Local MongoDB + Direct Execution)
 
 #### Linux / macOS
 Open a terminal in the project directory and run:
@@ -244,7 +255,7 @@ Both launchers host:
 
 ---
 
-### Option B: Manual Step-by-Step Setup
+### Option C: Manual Step-by-Step Setup
 
 #### 1. Backend Service
 ```bash
@@ -280,7 +291,7 @@ npm run dev
 
 ---
 
-### Option C: Vercel Cloud Deployment
+### Option D: Vercel Cloud Deployment
 
 CGAS is fully configured for deployment on [Vercel](https://vercel.com):
 

@@ -46,28 +46,48 @@ if [ ! -d "backend/venv" ]; then
     ./backend/venv/bin/pip install -r backend/requirements.txt
 fi
 
-# 4. Initialize database with seed data if needed
+# 4. Ensure MongoDB server is running
 echo ""
-echo "[SETUP] Ensuring MongoDB connection and initial demo accounts..."
+MONGO_STARTED_BY_SCRIPT=false
+if ! (echo > /dev/tcp/localhost/27017) >/dev/null 2>&1; then
+    if command -v mongod >/dev/null 2>&1; then
+        echo "[SETUP] Starting project-local MongoDB database server on port 27017..."
+        mkdir -p .mongodb_data
+        mongod --dbpath .mongodb_data --port 27017 --bind_ip 127.0.0.1 --logpath .mongodb_data/mongod.log --fork
+        MONGO_STARTED_BY_SCRIPT=true
+        echo "[OK] Project-local MongoDB started."
+    else
+        echo "[WARNING] MongoDB is not running and 'mongod' command not found."
+        echo "          You can also start the stack via: docker compose up"
+    fi
+else
+    echo "[OK] MongoDB is active on localhost:27017."
+fi
+
+# 5. Initialize database with seed data if needed
+echo "[SETUP] Ensuring initial demo accounts and categories..."
 ./backend/venv/bin/python backend/app/seed.py || {
-    echo "[WARNING] Could not connect to MongoDB on default port (27017)."
-    echo "          Please ensure MongoDB is running ('mongod', 'systemctl start mongod', or set MONGODB_URL)."
+    echo "[WARNING] Could not seed database."
 }
 
-# 5. Check frontend dependencies
+# 6. Check frontend dependencies
 if [ ! -d "frontend/node_modules" ]; then
     echo ""
     echo "[SETUP] Installing frontend npm dependencies..."
     (cd frontend && npm install)
 fi
 
-# 6. Process cleanup on exit
+# 7. Process cleanup on exit
 cleanup() {
     trap - SIGINT SIGTERM EXIT
     echo ""
     echo "=================================================================="
     echo " Shutting down CGAS development servers..."
     kill $(jobs -p) 2>/dev/null || true
+    if [ "$MONGO_STARTED_BY_SCRIPT" = true ]; then
+        echo " Stopping project-local MongoDB server..."
+        mongod --dbpath .mongodb_data --shutdown 2>/dev/null || true
+    fi
     echo " Servers stopped."
     echo "=================================================================="
     exit 0
