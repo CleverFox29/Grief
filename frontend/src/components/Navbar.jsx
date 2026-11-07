@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, User, ShieldCheck, GraduationCap, Wrench } from 'lucide-react';
 import NotificationDrawer from './NotificationDrawer';
+import logoImg from '../assets/logo.png';
 
 export default function Navbar({ onSelectTicketFromNotification }) {
   const { user, logout } = useAuth();
@@ -13,7 +14,7 @@ export default function Navbar({ onSelectTicketFromNotification }) {
         {/* Brand / Logo */}
         <div className="flex items-center space-x-3">
           <img
-            src="/logo.png"
+            src={logoImg}
             alt="NIT Warangal Logo"
             className="w-10 h-10 rounded-xl object-contain bg-white p-0.5 shadow-sm border border-slate-700 shrink-0"
           />

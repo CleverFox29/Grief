@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, GraduationCap, Wrench, Lock, Eye, EyeOff, AlertCircle, AlertTriangle, ArrowRight } from 'lucide-react';
 import ForgotPasswordModal from './ForgotPasswordModal';
+import logoImg from '../assets/logo.png';
 
 export default function Login() {
   const { login, loading, sessionWarning, setSessionWarning } = useAuth();
@@ -54,7 +55,7 @@ export default function Login() {
         <div className="bg-slate-900 text-white p-6 sm:p-8 text-center relative overflow-hidden">
           <div className="absolute -top-12 -right-12 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl"></div>
           <img
-            src="/logo.png"
+            src={logoImg}
             alt="NIT Warangal Logo"
             className="w-16 h-16 rounded-2xl object-contain bg-white p-1 mx-auto mb-3 shadow-lg border border-slate-700"
           />
