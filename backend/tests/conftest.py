@@ -113,3 +113,53 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+@pytest.fixture(scope="function")
+def student_auth_header(client, db_session):
+    """Seed default student and return bearer authorization header."""
+    student = Student.objects(user_id="25CSB0A22").first()
+    if not student:
+        student = Student(
+            user_id="25CSB0A22",
+            name="Soham Siddhartha Roy",
+            email="soham.roy@campus.edu",
+            role=UserRole.STUDENT.value,
+            enrollment_no="25CSB0A22",
+            hostel_room="H3-204"
+        )
+        student.set_password("Student@123")
+        db_session.add(student)
+        db_session.commit()
+
+    login_resp = client.post("/api/auth/login", json={
+        "user_id": "25CSB0A22",
+        "password": "Student@123",
+        "role": "STUDENT"
+    })
+    token = login_resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+@pytest.fixture(scope="function")
+def admin_auth_header(client, db_session):
+    """Seed default admin and return bearer authorization header."""
+    admin = Admin.objects(user_id="admin01").first()
+    if not admin:
+        admin = Admin(
+            user_id="admin01",
+            name="Chief Administrator",
+            email="admin@campus.edu",
+            role=UserRole.ADMIN.value,
+            department="Facilities",
+            admin_level="SUPER_ADMIN"
+        )
+        admin.set_password("Admin@123")
+        db_session.add(admin)
+        db_session.commit()
+
+    login_resp = client.post("/api/auth/login", json={
+        "user_id": "admin01",
+        "password": "Admin@123",
+        "role": "ADMIN"
+    })
+    token = login_resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}

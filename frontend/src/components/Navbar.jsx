@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, User, ShieldCheck, GraduationCap } from 'lucide-react';
+import { LogOut, User, ShieldCheck, GraduationCap, Wrench } from 'lucide-react';
 import NotificationDrawer from './NotificationDrawer';
 
 export default function Navbar({ onSelectTicketFromNotification }) {
@@ -37,16 +37,24 @@ export default function Navbar({ onSelectTicketFromNotification }) {
               <div className="hidden sm:block text-xs">
                 <p className="font-semibold text-slate-100">{user.name}</p>
                 <p className="text-slate-400">
-                  {user.role === 'STUDENT' ? `Room: ${user.hostel_room || 'N/A'}` : user.department || 'Admin'}
+                  {user.role === 'STUDENT' 
+                    ? `Room: ${user.hostel_room || 'N/A'}` 
+                    : user.role === 'SERVICEMAN' 
+                    ? `${user.category || 'Maintenance'} Specialist` 
+                    : user.department || 'Admin'}
                 </p>
               </div>
               <span className={`inline-flex items-center space-x-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
                 user.role === 'ADMIN'
                   ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                  : user.role === 'SERVICEMAN'
+                  ? 'bg-blue-500/10 text-blue-300 border-blue-500/30'
                   : 'bg-teal-500/10 text-teal-300 border-teal-500/30'
               }`}>
                 {user.role === 'ADMIN' ? (
                   <ShieldCheck className="w-3.5 h-3.5" />
+                ) : user.role === 'SERVICEMAN' ? (
+                  <Wrench className="w-3.5 h-3.5" />
                 ) : (
                   <GraduationCap className="w-3.5 h-3.5" />
                 )}

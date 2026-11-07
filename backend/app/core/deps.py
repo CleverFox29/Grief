@@ -72,3 +72,5 @@ def require_role(allowed_roles: List[UserRole]) -> Callable[[User], User]:
 # Shortcuts
 require_student = require_role([UserRole.STUDENT])
 require_admin = require_role([UserRole.ADMIN])
+require_serviceman = require_role([UserRole.SERVICEMAN])
+require_serviceman_or_admin = require_role([UserRole.SERVICEMAN, UserRole.ADMIN])

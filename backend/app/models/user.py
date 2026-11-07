@@ -121,3 +121,41 @@ class Admin(User):
     def can_view_all_tickets(self) -> bool:
         """Admins have visibility over the entire unified ticket queue."""
         return True
+
+
+class Serviceman(User):
+    """
+    Serviceman entity inheriting from User.
+    Represents maintenance staff (e.g., Carpenters, Plumbers) who progress and resolve assigned tickets.
+    """
+    category = StringField(required=True, max_length=100)  # e.g., "Carpentry", "Plumbing"
+
+    def __init__(self, *args, **kwargs):
+        if "role" not in kwargs:
+            kwargs["role"] = UserRole.SERVICEMAN.value
+        if "phone_number" in kwargs and "phone" not in kwargs:
+            kwargs["phone"] = kwargs.pop("phone_number")
+        super().__init__(*args, **kwargs)
+
+    @property
+    def phone_number(self) -> Optional[str]:
+        return self.phone
+
+    @phone_number.setter
+    def phone_number(self, value: Optional[str]) -> None:
+        self.phone = value
+
+    def can_resolve_ticket(self, ticket) -> bool:
+        """
+        Servicemen can only resolve tickets that are assigned to them 
+        and match their specific service category.
+        """
+        assigned_id = getattr(ticket, "assigned_serviceman_id", None) or getattr(ticket, "assigned_staff_id", None)
+        if assigned_id and assigned_id != self.id:
+            return False
+
+        ticket_cat = ticket.category.name if getattr(ticket, "category", None) else None
+        if ticket_cat and self.category:
+            return ticket_cat.strip().lower() == self.category.strip().lower()
+
+        return True

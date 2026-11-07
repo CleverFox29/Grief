@@ -2,7 +2,7 @@
 
 from app.models.enums import UserRole, TicketStatus, AuditAction
 from app.models.base import TimestampMixin, utc_now
-from app.models.user import User, Student, Admin
+from app.models.user import User, Student, Admin, Serviceman
 from app.models.staff import StaffRecord
 from app.models.category import Category
 from app.models.ticket import Ticket
@@ -21,6 +21,7 @@ __all__ = [
     "User",
     "Student",
     "Admin",
+    "Serviceman",
     "StaffRecord",
     "Category",
     "Ticket",

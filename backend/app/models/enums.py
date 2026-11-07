@@ -5,11 +5,13 @@ from enum import Enum
 class UserRole(str, Enum):
     STUDENT = "STUDENT"
     ADMIN = "ADMIN"
+    SERVICEMAN = "SERVICEMAN"
 
 class TicketStatus(str, Enum):
     OPEN = "OPEN"
     IN_PROGRESS = "IN PROGRESS"
-    RESOLVED = "RESOLVED"
+    PENDING_CONFIRMATION = "PENDING CONFIRMATION" # Serviceman fixed it, waiting on student
+    RESOLVED = "RESOLVED" # Student confirmed it
     CLOSED = "CLOSED"
     DUPLICATE = "DUPLICATE"
 

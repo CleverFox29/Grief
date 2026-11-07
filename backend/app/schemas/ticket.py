@@ -1,9 +1,11 @@
-"""Pydantic schemas for ticket creation, duplicate checks, triage, timeline, staff, feedback, and reopening."""
+"""Pydantic schemas for ticket creation, duplicate checks, triage, timeline, staff, feedback, serviceman workflows, and reopening."""
 
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from app.models.enums import TicketStatus
 
+# ----------------- Category & Staff -----------------
 class CategoryResponse(BaseModel):
     id: int
     name: str
@@ -25,6 +27,7 @@ class StaffResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# ----------------- Duplicate Detection -----------------
 class DuplicateCheckRequest(BaseModel):
     category_id: int = Field(..., description="ID of grievance category")
     location: str = Field(..., min_length=2, description="Campus location or room")
@@ -46,25 +49,7 @@ class DuplicateCheckResponse(BaseModel):
     count: int
     matches: List[DuplicateMatch]
 
-class TicketResponse(BaseModel):
-    id: int
-    ticket_id: str
-    student_id: int
-    category_id: int
-    category_name: str
-    location: str
-    description: str
-    photo_url: Optional[str] = None
-    is_confidential: bool
-    status: str
-    is_flagged_duplicate: bool
-    parent_ticket_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
+# ----------------- Timeline & Feedback -----------------
 class TicketLogResponse(BaseModel):
     id: int
     action: str
@@ -97,6 +82,69 @@ class SubmitFeedbackRequest(BaseModel):
 class ReopenTicketRequest(BaseModel):
     reason: str = Field(..., min_length=5, description="Reason why grievance remains unresolved (F13)")
 
+# ----------------- Serviceman & Student Actions -----------------
+class TicketCreate(BaseModel):
+    """Schema for a student raising a new grievance."""
+    category_id: int = Field(..., description="ID of the grievance category")
+    location: str = Field(..., max_length=150, description="Specific location on campus")
+    description: str = Field(..., min_length=10, description="Detailed description of the issue")
+    photo_url: Optional[str] = Field(None, description="URL of the uploaded grievance photo")
+    is_confidential: bool = Field(False, description="If True, only admins can view details")
+
+class ServicemanWorkSubmit(BaseModel):
+    """Schema for a serviceman submitting their proof of work (F11.5)."""
+    proof_of_work_url: Optional[str] = Field(None, description="URL of the uploaded proof image")
+    serviceman_remark: str = Field(..., min_length=5, max_length=1000, description="Explanation of the fix")
+
+class TicketResolveRequest(BaseModel):
+    status: TicketStatus = Field(default=TicketStatus.PENDING_CONFIRMATION)
+    serviceman_remark: str = Field(..., min_length=5, description="Explanation of the fix")
+    proof_of_work_url: Optional[str] = Field(None, description="Optional proof of work URL")
+
+class StudentConfirmRequest(BaseModel):
+    """Schema for a student confirming or rejecting a serviceman's fix (F13)."""
+    is_fixed: bool = Field(..., description="True to confirm resolution, False to reopen/reject")
+    rating: Optional[int] = Field(None, ge=1, le=5, description="1 to 5 star rating (if fixed)")
+    feedback: Optional[str] = Field(None, max_length=500, description="Optional written feedback or issue persistence reason")
+
+class TicketUpdate(BaseModel):
+    """Schema for an admin updating ticket properties."""
+    assigned_serviceman_id: Optional[int] = Field(None, description="ID of the assigned Serviceman")
+    status: Optional[str] = Field(None, description="Force update status")
+    is_flagged_duplicate: Optional[bool] = None
+
+class TicketLinkRequest(BaseModel):
+    """Schema for linking a ticket as a duplicate."""
+    parent_ticket_id: int = Field(..., description="ID of the parent ticket")
+
+# ----------------- Ticket Responses -----------------
+class TicketResponse(BaseModel):
+    id: int
+    ticket_id: str
+    student_id: int
+    category_id: int
+    category_name: Optional[str] = None
+    location: str
+    description: str
+    photo_url: Optional[str] = None
+    is_confidential: bool
+    status: str
+    is_flagged_duplicate: bool
+    parent_ticket_id: Optional[int] = None
+    assigned_staff_id: Optional[int] = None
+    assigned_serviceman_id: Optional[int] = None
+    proof_of_work_url: Optional[str] = None
+    serviceman_remark: Optional[str] = None
+    student_rating: Optional[int] = None
+    student_feedback: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    resolved_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
 class TicketItemResponse(BaseModel):
     id: int
     ticket_id: str
@@ -113,6 +161,12 @@ class TicketItemResponse(BaseModel):
     parent_ticket_id: Optional[int] = None
     assigned_staff_id: Optional[int] = None
     assigned_staff_name: Optional[str] = None
+    assigned_serviceman_id: Optional[int] = None
+    assigned_serviceman_name: Optional[str] = None
+    proof_of_work_url: Optional[str] = None
+    serviceman_remark: Optional[str] = None
+    student_rating: Optional[int] = None
+    student_feedback: Optional[str] = None
     resolved_at: Optional[datetime] = None
     has_feedback: bool = False
     can_reopen: bool = False
@@ -145,6 +199,13 @@ class TicketDetailResponse(BaseModel):
     assigned_staff_id: Optional[int] = None
     assigned_staff_name: Optional[str] = None
     assigned_staff_contact: Optional[str] = None
+    assigned_serviceman_id: Optional[int] = None
+    assigned_serviceman_name: Optional[str] = None
+    assigned_serviceman_contact: Optional[str] = None
+    proof_of_work_url: Optional[str] = None
+    serviceman_remark: Optional[str] = None
+    student_rating: Optional[int] = None
+    student_feedback: Optional[str] = None
     resolved_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
     created_at: datetime
@@ -158,9 +219,15 @@ class TicketDetailResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class TicketListResponse(BaseModel):
+    """Schema for paginated ticket lists."""
+    total: int
+    tickets: List[TicketItemResponse]
+
 class UpdateTicketRequest(BaseModel):
-    status: Optional[str] = Field(None, description="New ticket status: OPEN, IN PROGRESS, RESOLVED, CLOSED")
+    status: Optional[str] = Field(None, description="New ticket status: OPEN, IN PROGRESS, PENDING CONFIRMATION, RESOLVED, CLOSED")
     assigned_staff_id: Optional[int] = Field(None, description="Staff member record ID to assign")
+    assigned_serviceman_id: Optional[int] = Field(None, description="Serviceman user ID to assign")
     remark: str = Field(..., min_length=1, description="Mandatory remark explaining this update (F11)")
     expected_updated_at: Optional[datetime] = Field(None, description="Optimistic concurrency check timestamp")
 

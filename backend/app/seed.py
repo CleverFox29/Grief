@@ -13,6 +13,7 @@ from app.models import (
     StaffRecord,
     Student,
     Admin,
+    Serviceman,
     UserRole,
     AuditLog,
     AuditAction
@@ -46,6 +47,7 @@ def seed_database():
     StaffRecord.ensure_indexes()
     Student.ensure_indexes()
     Admin.ensure_indexes()
+    Serviceman.ensure_indexes()
     AuditLog.ensure_indexes()
     
     try:
@@ -107,7 +109,28 @@ def seed_database():
             student_user.save()
             print("Added Default Student: 25CSB0A22 (password: Student@123)")
 
-        # 5. Log audit initialization
+        # 5. Seed Default Serviceman Users
+        servicemen_data = [
+            {"user_id": "service_carpenter", "name": "Manoj Sharma", "category": "Carpentry", "email": "carpenter@campus.edu", "phone": "+91-9876543202"},
+            {"user_id": "service_plumber", "name": "Rajesh Kumar", "category": "Plumbing", "email": "plumber@campus.edu", "phone": "+91-9876543201"},
+            {"user_id": "service_electrician", "name": "Sunil Verma", "category": "Electrical", "email": "electrician@campus.edu", "phone": "+91-9876543203"}
+        ]
+        for s_data in servicemen_data:
+            existing_sm = Serviceman.objects(user_id=s_data["user_id"]).first()
+            if not existing_sm:
+                sm = Serviceman(
+                    user_id=s_data["user_id"],
+                    name=s_data["name"],
+                    category=s_data["category"],
+                    email=s_data["email"],
+                    phone=s_data["phone"],
+                    password_hash=hash_password("Serviceman@123"),
+                    role=UserRole.SERVICEMAN.value
+                )
+                sm.save()
+                print(f"Added Serviceman: {s_data['user_id']} ({s_data['category']}, password: Serviceman@123)")
+
+        # 6. Log audit initialization
         audit = AuditLog(
             action=AuditAction.CATEGORY_CREATED.value,
             entity_type="SYSTEM",

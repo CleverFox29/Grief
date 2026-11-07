@@ -69,7 +69,15 @@ export function AuthProvider({ children }) {
         }),
       });
 
-      const data = await response.json();
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        if (!response.ok) {
+          throw new Error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:8000.');
+        }
+      }
+
       if (!response.ok) {
         throw new Error(data.detail || 'Authentication failed');
       }

@@ -170,6 +170,10 @@ class TicketService:
         if t.duplicate_tickets:
             for child in t.duplicate_tickets:
                 child_can_reopen, _ = cls._calculate_reopen_status(child)
+                child_staff_name = child.assigned_staff.name if child.assigned_staff else None
+                child_serviceman_name = child.assigned_serviceman.name if child.assigned_serviceman else None
+                child_rating = child.student_rating or (child.feedback.rating if child.feedback else None)
+                child_feedback = child.student_feedback or (child.feedback.comment if child.feedback else None)
                 duplicate_children.append(TicketItemResponse(
                     id=child.id,
                     ticket_id=child.ticket_id,
@@ -184,8 +188,14 @@ class TicketService:
                     status=child.status,
                     is_flagged_duplicate=child.is_flagged_duplicate,
                     parent_ticket_id=child.parent_ticket_id,
-                    assigned_staff_id=child.assigned_staff_id,
-                    assigned_staff_name=child.assigned_staff.name if child.assigned_staff else None,
+                    assigned_staff_id=child.assigned_staff_id or child.assigned_serviceman_id,
+                    assigned_staff_name=child_staff_name or child_serviceman_name,
+                    assigned_serviceman_id=child.assigned_serviceman_id,
+                    assigned_serviceman_name=child_serviceman_name,
+                    proof_of_work_url=child.proof_of_work_url,
+                    serviceman_remark=child.serviceman_remark,
+                    student_rating=child_rating,
+                    student_feedback=child_feedback,
                     resolved_at=child.resolved_at,
                     has_feedback=child.feedback is not None,
                     can_reopen=child_can_reopen,
@@ -194,6 +204,11 @@ class TicketService:
                     duplicate_count=0,
                     duplicate_children=[]
                 ))
+
+        t_staff_name = t.assigned_staff.name if t.assigned_staff else None
+        t_serviceman_name = t.assigned_serviceman.name if t.assigned_serviceman else None
+        t_rating = t.student_rating or (t.feedback.rating if t.feedback else None)
+        t_feedback = t.student_feedback or (t.feedback.comment if t.feedback else None)
 
         return TicketItemResponse(
             id=t.id,
@@ -209,8 +224,14 @@ class TicketService:
             status=t.status,
             is_flagged_duplicate=t.is_flagged_duplicate,
             parent_ticket_id=t.parent_ticket_id,
-            assigned_staff_id=t.assigned_staff_id,
-            assigned_staff_name=t.assigned_staff.name if t.assigned_staff else None,
+            assigned_staff_id=t.assigned_staff_id or t.assigned_serviceman_id,
+            assigned_staff_name=t_staff_name or t_serviceman_name,
+            assigned_serviceman_id=t.assigned_serviceman_id,
+            assigned_serviceman_name=t_serviceman_name,
+            proof_of_work_url=t.proof_of_work_url,
+            serviceman_remark=t.serviceman_remark,
+            student_rating=t_rating,
+            student_feedback=t_feedback,
             resolved_at=t.resolved_at,
             has_feedback=t.feedback is not None,
             can_reopen=can_reopen,
@@ -296,6 +317,16 @@ class TicketService:
         if ticket.is_confidential and current_user.role != UserRole.ADMIN.value and ticket.student_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This ticket is marked confidential.")
 
+        if current_user.role == UserRole.SERVICEMAN.value:
+            if ticket.is_confidential:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This ticket is marked confidential.")
+            serviceman_cat = getattr(current_user, "category", "") or ""
+            ticket_cat = ticket.category.name if ticket.category else ""
+            is_assigned = (ticket.assigned_serviceman_id == current_user.id)
+            is_same_cat = serviceman_cat and ticket_cat and (serviceman_cat.strip().lower() == ticket_cat.strip().lower())
+            if not (is_assigned or is_same_cat):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: Ticket does not belong to your service category.")
+
         # Timeline logs
         logs_response = []
         for log in ticket.logs:
@@ -330,6 +361,17 @@ class TicketService:
                 submitted_at=ticket.feedback.submitted_at
             )
 
+        serviceman = ticket.assigned_serviceman
+        serviceman_name = serviceman.name if serviceman else None
+        serviceman_contact = getattr(serviceman, "phone", None) or getattr(serviceman, "phone_number", None)
+
+        staff = ticket.assigned_staff
+        staff_name = staff.name if staff else (serviceman_name if serviceman else None)
+        staff_contact = getattr(staff, "contact", None) if staff else (serviceman_contact if serviceman else None)
+
+        student_rating = ticket.student_rating or (ticket.feedback.rating if ticket.feedback else None)
+        student_feedback = ticket.student_feedback or (ticket.feedback.comment if ticket.feedback else None)
+
         return TicketDetailResponse(
             id=ticket.id,
             ticket_id=ticket.ticket_id,
@@ -348,9 +390,16 @@ class TicketService:
             is_flagged_duplicate=ticket.is_flagged_duplicate,
             parent_ticket_id=ticket.parent_ticket_id,
             parent_ticket_uid=ticket.parent_ticket.ticket_id if ticket.parent_ticket else None,
-            assigned_staff_id=ticket.assigned_staff_id,
-            assigned_staff_name=ticket.assigned_staff.name if ticket.assigned_staff else None,
-            assigned_staff_contact=ticket.assigned_staff.contact if ticket.assigned_staff else None,
+            assigned_staff_id=ticket.assigned_staff_id or ticket.assigned_serviceman_id,
+            assigned_staff_name=staff_name,
+            assigned_staff_contact=staff_contact,
+            assigned_serviceman_id=ticket.assigned_serviceman_id,
+            assigned_serviceman_name=serviceman_name,
+            assigned_serviceman_contact=serviceman_contact,
+            proof_of_work_url=ticket.proof_of_work_url,
+            serviceman_remark=ticket.serviceman_remark,
+            student_rating=student_rating,
+            student_feedback=student_feedback,
             resolved_at=ticket.resolved_at,
             closed_at=ticket.closed_at,
             created_at=ticket.created_at,
@@ -405,6 +454,15 @@ class TicketService:
                 
                 ticket.assigned_staff_id = new_staff.id
                 staff_changed = True
+
+        if getattr(update_data, "assigned_serviceman_id", None) is not None:
+            if update_data.assigned_serviceman_id != ticket.assigned_serviceman_id:
+                new_serviceman = User.objects(id=update_data.assigned_serviceman_id).first()
+                if not new_serviceman:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serviceman user not found.")
+                ticket.assigned_serviceman_id = new_serviceman.id
+                staff_changed = True
+                new_staff = new_serviceman
 
         now = datetime.now(timezone.utc)
         if status_changed:
@@ -594,3 +652,274 @@ class TicketService:
         audit.save()
 
         return ticket
+
+    @classmethod
+    def get_serviceman_queue(
+        cls,
+        db,
+        serviceman: User,
+        search: Optional[str] = None,
+        status_filter: Optional[str] = None,
+        assigned_only: bool = False
+    ) -> List[TicketItemResponse]:
+        """
+        Retrieve tickets relevant to an authenticated serviceman (category-based or assigned).
+        Excludes confidential tickets unless explicitly assigned to this serviceman.
+        """
+        cat_ids = []
+        if getattr(serviceman, "category", None):
+            matched_cats = Category.objects(name__iexact=serviceman.category.strip())
+            cat_ids = [c.id for c in matched_cats]
+
+        if assigned_only:
+            qs = Ticket.objects(assigned_serviceman_id=serviceman.id)
+        elif cat_ids:
+            qs = Ticket.objects(
+                (Q(category_id__in=cat_ids) & Q(is_confidential=False)) |
+                Q(assigned_serviceman_id=serviceman.id)
+            )
+        else:
+            qs = Ticket.objects(assigned_serviceman_id=serviceman.id)
+
+        if status_filter and status_filter.upper() != "ALL":
+            qs = qs.filter(status=status_filter.upper())
+
+        if search and search.strip():
+            s = search.strip()
+            qs = qs.filter(
+                Q(ticket_id__icontains=s) |
+                Q(location__icontains=s) |
+                Q(description__icontains=s)
+            )
+
+        tickets = list(qs.order_by("-created_at", "-id"))
+        return [cls._build_ticket_item_response(t) for t in tickets]
+
+    @classmethod
+    def claim_ticket(cls, db, ticket_id: int, serviceman: User) -> TicketDetailResponse:
+        """Serviceman claims an open or available ticket and marks it IN PROGRESS."""
+        ticket = Ticket.objects(id=ticket_id).first()
+        if not ticket:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+        serviceman_cat = getattr(serviceman, "category", "") or ""
+        ticket_cat = ticket.category.name if ticket.category else ""
+        if serviceman_cat and ticket_cat and (serviceman_cat.strip().lower() != ticket_cat.strip().lower()):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cannot claim ticket in '{ticket_cat}' category when registered for '{serviceman_cat}'."
+            )
+
+        old_status = ticket.status
+        ticket.assigned_serviceman_id = serviceman.id
+        if not ticket.assigned_staff_id:
+            ticket.assigned_staff_id = serviceman.id
+        if ticket.status == TicketStatus.OPEN.value:
+            ticket.status = TicketStatus.IN_PROGRESS.value
+        ticket.save()
+
+        log = TicketLog(
+            ticket_id=ticket.id,
+            performed_by_id=serviceman.id,
+            action="TICKET_CLAIMED",
+            old_status=old_status,
+            new_status=ticket.status,
+            remark=f"Ticket claimed by serviceman {serviceman.name} ({serviceman_cat}). Status set to {ticket.status}."
+        )
+        log.save()
+
+        notification = Notification(
+            user_id=ticket.student_id,
+            ticket_id=ticket.id,
+            message=f"Serviceman {serviceman.name} has claimed your grievance #{ticket.ticket_id} and started work."
+        )
+        notification.save()
+
+        audit = AuditLog(
+            user_id=serviceman.id,
+            action=AuditAction.STATUS_CHANGED.value,
+            entity_type="TICKET",
+            entity_id=ticket.ticket_id,
+            details=f"Serviceman {serviceman.name} claimed ticket #{ticket.ticket_id}. Status: {ticket.status}."
+        )
+        audit.save()
+
+        return cls.get_ticket_detail(db, ticket.id, serviceman)
+
+    @classmethod
+    def resolve_ticket_by_serviceman(
+        cls,
+        db,
+        ticket_id: int,
+        serviceman: User,
+        remark: str,
+        proof_file: Optional[UploadFile] = None,
+        proof_url: Optional[str] = None
+    ) -> TicketDetailResponse:
+        """
+        Serviceman submits proof of work and remarks.
+        Ticket transitions from IN PROGRESS / OPEN -> PENDING CONFIRMATION.
+        Student is notified to confirm or reopen.
+        """
+        ticket = Ticket.objects(id=ticket_id).first()
+        if not ticket:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+        if ticket.assigned_serviceman_id and ticket.assigned_serviceman_id != serviceman.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This ticket is assigned to another serviceman."
+            )
+
+        final_proof_url = proof_url
+        if proof_file:
+            final_proof_url = validate_and_save_photo(proof_file)
+
+        old_status = ticket.status
+        ticket.submit_proof_of_work(
+            serviceman_id=serviceman.id,
+            proof_url=final_proof_url,
+            remark=remark
+        )
+
+        log = TicketLog(
+            ticket_id=ticket.id,
+            performed_by_id=serviceman.id,
+            action="WORK_COMPLETED",
+            old_status=old_status,
+            new_status=TicketStatus.PENDING_CONFIRMATION.value,
+            remark=f"Work completed: {remark}" + (f" (Proof: {final_proof_url})" if final_proof_url else "")
+        )
+        log.save()
+
+        notification = Notification(
+            user_id=ticket.student_id,
+            ticket_id=ticket.id,
+            message=f"Serviceman {serviceman.name} marked ticket #{ticket.ticket_id} as fixed. Please review proof of work and confirm resolution."
+        )
+        notification.save()
+
+        audit = AuditLog(
+            user_id=serviceman.id,
+            action=AuditAction.STATUS_CHANGED.value,
+            entity_type="TICKET",
+            entity_id=ticket.ticket_id,
+            details=f"Serviceman {serviceman.name} submitted proof of work for ticket #{ticket.ticket_id}. Status: PENDING CONFIRMATION."
+        )
+        audit.save()
+
+        return cls.get_ticket_detail(db, ticket.id, serviceman)
+
+    @classmethod
+    def confirm_ticket_resolution(
+        cls,
+        db,
+        ticket_id: int,
+        student: User,
+        is_fixed: bool,
+        rating: Optional[int] = None,
+        feedback: Optional[str] = None
+    ) -> TicketDetailResponse:
+        """
+        Student verifies the work submitted by the serviceman.
+        - If is_fixed=True: marks RESOLVED, records star rating (1-5) and feedback comment.
+        - If is_fixed=False: rejects fix, transitions ticket back to OPEN / IN PROGRESS with reason.
+        """
+        ticket = Ticket.objects(id=ticket_id).first()
+        if not ticket:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+        if ticket.student_id != student.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the student who raised this grievance can confirm resolution."
+            )
+
+        old_status = ticket.status
+
+        if is_fixed:
+            ticket.status = TicketStatus.RESOLVED.value
+            ticket.resolved_at = datetime.now(timezone.utc)
+            if rating is not None:
+                ticket.student_rating = rating
+            if feedback:
+                ticket.student_feedback = feedback
+            ticket.save()
+
+            if rating is not None:
+                existing_fb = Feedback.objects(ticket_id=ticket.id).first()
+                if not existing_fb:
+                    fb = Feedback(
+                        ticket_id=ticket.id,
+                        student_id=student.id,
+                        rating=rating,
+                        comment=feedback
+                    )
+                    fb.save()
+                else:
+                    existing_fb.rating = rating
+                    existing_fb.comment = feedback
+                    existing_fb.save()
+
+            log = TicketLog(
+                ticket_id=ticket.id,
+                performed_by_id=student.id,
+                action="RESOLUTION_CONFIRMED",
+                old_status=old_status,
+                new_status=TicketStatus.RESOLVED.value,
+                remark=f"Student confirmed resolution (Rating: {rating or 'N/A'}/5). {feedback or ''}".strip()
+            )
+            log.save()
+
+            if ticket.assigned_serviceman_id:
+                notif = Notification(
+                    user_id=ticket.assigned_serviceman_id,
+                    ticket_id=ticket.id,
+                    message=f"Student {student.name} confirmed resolution for #{ticket.ticket_id} with rating {rating or 5}/5!"
+                )
+                notif.save()
+
+            audit = AuditLog(
+                user_id=student.id,
+                action=AuditAction.FEEDBACK_SUBMITTED.value,
+                entity_type="TICKET",
+                entity_id=ticket.ticket_id,
+                details=f"Student confirmed resolution for #{ticket.ticket_id}. Rating: {rating}."
+            )
+            audit.save()
+
+        else:
+            ticket.status = TicketStatus.OPEN.value
+            ticket.resolved_at = None
+            ticket.student_feedback = feedback
+            ticket.save()
+
+            reject_remark = f"Student reported issue is NOT fixed: {feedback or 'No remark provided.'}"
+            log = TicketLog(
+                ticket_id=ticket.id,
+                performed_by_id=student.id,
+                action="RESOLUTION_REJECTED",
+                old_status=old_status,
+                new_status=TicketStatus.OPEN.value,
+                remark=reject_remark
+            )
+            log.save()
+
+            if ticket.assigned_serviceman_id:
+                notif = Notification(
+                    user_id=ticket.assigned_serviceman_id,
+                    ticket_id=ticket.id,
+                    message=f"Student {student.name} indicated #{ticket.ticket_id} was NOT resolved: {feedback or 'Issue persists.'}"
+                )
+                notif.save()
+
+            audit = AuditLog(
+                user_id=student.id,
+                action=AuditAction.TICKET_REOPENED.value,
+                entity_type="TICKET",
+                entity_id=ticket.ticket_id,
+                details=f"Student rejected fix for #{ticket.ticket_id}: {feedback}."
+            )
+            audit.save()
+
+        return cls.get_ticket_detail(db, ticket.id, student)

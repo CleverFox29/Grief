@@ -21,6 +21,7 @@ class UserResponse(BaseModel):
     hostel_room: Optional[str] = None
     department: Optional[str] = None
     admin_level: Optional[str] = None
+    category: Optional[str] = None
 
     class Config:
         from_attributes = True

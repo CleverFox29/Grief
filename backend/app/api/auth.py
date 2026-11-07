@@ -53,7 +53,8 @@ def login(request: LoginRequest, db = Depends(get_db)):
         enrollment_no=getattr(user, "enrollment_no", None),
         hostel_room=getattr(user, "hostel_room", None),
         department=getattr(user, "department", None),
-        admin_level=getattr(user, "admin_level", None)
+        admin_level=getattr(user, "admin_level", None),
+        category=getattr(user, "category", None)
     )
 
     return TokenResponse(
@@ -77,7 +78,8 @@ def get_current_authenticated_user(current_user: User = Depends(get_current_user
         enrollment_no=getattr(current_user, "enrollment_no", None),
         hostel_room=getattr(current_user, "hostel_room", None),
         department=getattr(current_user, "department", None),
-        admin_level=getattr(current_user, "admin_level", None)
+        admin_level=getattr(current_user, "admin_level", None),
+        category=getattr(current_user, "category", None)
     )
 
 @router.post("/request-otp", response_model=RequestOTPResponse)

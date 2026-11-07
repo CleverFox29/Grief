@@ -27,6 +27,7 @@ class Ticket(Document, TimestampMixin):
             "student_id",
             "category_id",
             "assigned_staff_id",
+            "assigned_serviceman_id",
             "parent_ticket_id",
             "location",
             "status",
@@ -42,14 +43,23 @@ class Ticket(Document, TimestampMixin):
     student_id = IntField(required=True)
     category_id = IntField(required=True)
     assigned_staff_id = IntField(null=True)
+    assigned_serviceman_id = IntField(null=True)
     parent_ticket_id = IntField(null=True)
     
     location = StringField(required=True, max_length=150)
     description = StringField(required=True)
     photo_url = StringField(max_length=255, null=True)
     is_confidential = BooleanField(default=False, required=True)
-    status = StringField(default=TicketStatus.OPEN.value, required=True, max_length=20)
+    status = StringField(default=TicketStatus.OPEN.value, required=True, max_length=30)
     is_flagged_duplicate = BooleanField(default=False, required=True)
+    
+    # New Serviceman Fields
+    proof_of_work_url = StringField(max_length=255, null=True)
+    serviceman_remark = StringField(null=True)
+    
+    # Student Feedback Fields
+    student_rating = IntField(null=True)
+    student_feedback = StringField(null=True)
     
     resolved_at = DateTimeField(null=True)
     closed_at = DateTimeField(null=True)
@@ -86,7 +96,22 @@ class Ticket(Document, TimestampMixin):
     def assigned_staff(self):
         if self.assigned_staff_id:
             from app.models.staff import StaffRecord
-            return StaffRecord.objects(id=self.assigned_staff_id).first()
+            staff = StaffRecord.objects(id=self.assigned_staff_id).first()
+            if staff:
+                return staff
+        if self.assigned_serviceman_id:
+            from app.models.user import User
+            return User.objects(id=self.assigned_serviceman_id).first()
+        return None
+
+    @property
+    def assigned_serviceman(self):
+        if self.assigned_serviceman_id:
+            from app.models.user import User
+            return User.objects(id=self.assigned_serviceman_id).first()
+        if self.assigned_staff_id:
+            from app.models.user import User
+            return User.objects(id=self.assigned_staff_id).first()
         return None
 
     @property
@@ -117,17 +142,36 @@ class Ticket(Document, TimestampMixin):
         """Return True if other duplicate tickets are linked to this parent ticket."""
         return len(self.duplicate_tickets) > 0
 
+    def submit_proof_of_work(self, serviceman_id: int, proof_url: Optional[str], remark: str) -> None:
+        """
+        Serviceman action (F11.5). 
+        Saves proof of work and moves ticket to PENDING_CONFIRMATION.
+        """
+        if self.assigned_serviceman_id and self.assigned_serviceman_id != serviceman_id:
+            raise ValueError("Only the assigned serviceman can resolve this ticket.")
+        
+        self.assigned_serviceman_id = serviceman_id
+        if not self.assigned_staff_id:
+            self.assigned_staff_id = serviceman_id
+        self.proof_of_work_url = proof_url
+        self.serviceman_remark = remark
+        self.status = TicketStatus.PENDING_CONFIRMATION.value
+        self.resolved_at = datetime.now(timezone.utc)
+        
+        if self._data.get("id") is not None:
+            self.save()
+
     def can_be_reopened(self) -> Tuple[bool, str]:
         """
         Check if student can reopen ticket within 7-day window (F13 / U7).
         """
-        if self.status != TicketStatus.RESOLVED.value:
-            return False, f"Only tickets in RESOLVED status can be reopened (current: {self.status})."
+        valid_statuses = [TicketStatus.RESOLVED.value, TicketStatus.PENDING_CONFIRMATION.value]
+        if self.status not in valid_statuses:
+            return False, f"Ticket must be pending confirmation or resolved to reopen (current: {self.status})."
         
         if not self.resolved_at:
             return False, "Ticket has no recorded resolution timestamp."
         
-        # Calculate time elapsed since resolution
         res_time = self.resolved_at
         if res_time.tzinfo is None:
             res_time = res_time.replace(tzinfo=timezone.utc)
@@ -150,6 +194,7 @@ class Ticket(Document, TimestampMixin):
         
         self.status = TicketStatus.OPEN.value
         self.resolved_at = None
+        self.proof_of_work_url = None
         if self._data.get("id") is not None:
             self.save()
 

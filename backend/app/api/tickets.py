@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Form, File, UploadFile, Query, status, HTTPException
 
 from app.database import get_db
-from app.core.deps import get_current_user, require_student, require_admin
+from app.core.deps import get_current_user, require_student, require_admin, require_serviceman, require_serviceman_or_admin
 from app.models import User, Category, StaffRecord, Notification, Ticket
 from app.schemas.ticket import (
     CategoryResponse,
@@ -18,7 +18,10 @@ from app.schemas.ticket import (
     NotificationResponse,
     FeedbackResponse,
     SubmitFeedbackRequest,
-    ReopenTicketRequest
+    ReopenTicketRequest,
+    TicketResolveRequest,
+    StudentConfirmRequest,
+    ServicemanWorkSubmit
 )
 from app.services.deduplication_service import DeduplicationEngine
 from app.services.ticket_service import TicketService
@@ -171,6 +174,23 @@ def get_admin_ticket_queue(
         sort_by=sort
     )
 
+@router.get("/tickets/serviceman-queue", response_model=List[TicketItemResponse])
+def get_serviceman_queue(
+    search: Optional[str] = Query(None, description="Search by Ticket ID, location or description"),
+    status_filter: Optional[str] = Query(None, description="Filter by status (OPEN, IN PROGRESS, PENDING CONFIRMATION, RESOLVED, CLOSED, or ALL)"),
+    assigned_only: bool = Query(False, description="Filter to only tickets assigned to this serviceman"),
+    current_user: User = Depends(require_serviceman),
+    db = Depends(get_db)
+):
+    """Retrieve ticket queue for authenticated serviceman filtered to their trade category."""
+    return TicketService.get_serviceman_queue(
+        db=db,
+        serviceman=current_user,
+        search=search,
+        status_filter=status_filter,
+        assigned_only=assigned_only
+    )
+
 @router.get("/tickets/{ticket_id}", response_model=TicketDetailResponse)
 def get_ticket_details(
     ticket_id: int,
@@ -286,3 +306,70 @@ def reopen_grievance(
         reopen_data=request
     )
     return TicketService.get_ticket_detail(db=db, ticket_id=reopened.id, current_user=current_user)
+
+# ----------------- Serviceman & Resolution Workflow Endpoints -----------------
+
+@router.post("/tickets/{ticket_id}/claim", response_model=TicketDetailResponse)
+def claim_ticket(
+    ticket_id: int,
+    current_user: User = Depends(require_serviceman),
+    db = Depends(get_db)
+):
+    """Serviceman claims an available ticket in their category and marks it IN PROGRESS."""
+    return TicketService.claim_ticket(
+        db=db,
+        ticket_id=ticket_id,
+        serviceman=current_user
+    )
+
+@router.post("/tickets/{ticket_id}/resolve", response_model=TicketDetailResponse)
+def resolve_ticket(
+    ticket_id: int,
+    request: TicketResolveRequest,
+    current_user: User = Depends(require_serviceman),
+    db = Depends(get_db)
+):
+    """Serviceman resolves ticket with remarks and proof URL, moving status to PENDING CONFIRMATION."""
+    return TicketService.resolve_ticket_by_serviceman(
+        db=db,
+        ticket_id=ticket_id,
+        serviceman=current_user,
+        remark=request.serviceman_remark,
+        proof_url=request.proof_of_work_url
+    )
+
+@router.post("/tickets/{ticket_id}/submit-proof", response_model=TicketDetailResponse)
+async def submit_proof_multipart(
+    ticket_id: int,
+    remark: str = Form(..., min_length=5),
+    proof_url: Optional[str] = Form(None),
+    proof_file: Optional[UploadFile] = File(None),
+    current_user: User = Depends(require_serviceman),
+    db = Depends(get_db)
+):
+    """Serviceman submits proof photo file upload or URL with remarks, moving to PENDING CONFIRMATION."""
+    return TicketService.resolve_ticket_by_serviceman(
+        db=db,
+        ticket_id=ticket_id,
+        serviceman=current_user,
+        remark=remark,
+        proof_file=proof_file,
+        proof_url=proof_url
+    )
+
+@router.post("/tickets/{ticket_id}/confirm", response_model=TicketDetailResponse)
+def confirm_resolution(
+    ticket_id: int,
+    request: StudentConfirmRequest,
+    current_user: User = Depends(require_student),
+    db = Depends(get_db)
+):
+    """Student confirms or rejects the fix submitted by the serviceman."""
+    return TicketService.confirm_ticket_resolution(
+        db=db,
+        ticket_id=ticket_id,
+        student=current_user,
+        is_fixed=request.is_fixed,
+        rating=request.rating,
+        feedback=request.feedback
+    )

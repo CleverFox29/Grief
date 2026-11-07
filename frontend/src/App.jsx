@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Login from './components/Login';
 import StudentDashboard from './components/StudentDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import ServicemanDashboard from './components/ServicemanDashboard';
 
 function MainContent() {
   const { user, isAuthenticated } = useAuth();
@@ -14,6 +15,10 @@ function MainContent() {
 
   if (user?.role === 'ADMIN') {
     return <AdminDashboard />;
+  }
+
+  if (user?.role === 'SERVICEMAN') {
+    return <ServicemanDashboard />;
   }
 
   return <StudentDashboard />;
