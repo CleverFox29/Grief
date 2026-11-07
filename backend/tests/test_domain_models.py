@@ -52,12 +52,10 @@ def test_user_inheritance_and_polymorphism(db_session):
     assert queried_student.enrollment_no == "ENROLL001"
     assert queried_student.verify_password("StudentPass123") is True
     assert queried_student.verify_password("WrongPass") is False
-    assert queried_student.can_view_confidential_tickets() is False
 
     queried_admin = db_session.query(Admin).filter_by(user_id="admin_test").first()
     assert queried_admin is not None
     assert queried_admin.department == "Facilities"
-    assert queried_admin.can_view_confidential_tickets() is True
     assert queried_admin.can_manage_categories() is True
 
 

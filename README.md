@@ -64,7 +64,7 @@ The **Campus Grievance Addressal System (CGAS)** modernizes campus facilities ma
 | **F1** | Role-based authentication (Student / Admin) | [`AuthService`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/services/auth_service.py), [`Login.jsx`](file:///home/soham-roy/Documents/code/web/Grief/frontend/src/components/Login.jsx) | `U1` | ✅ Verified |
 | **F2** | Wrong password warning; 15-min lockout after 5 failed attempts | [`User.record_failed_attempt()`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/models/user.py#L56-L66) | `U1` | ✅ Verified |
 | **F3** | Password recovery via single-use 5-minute numeric OTP | [`PasswordResetOTP`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/models/otp.py), [`ForgotPasswordModal.jsx`](file:///home/soham-roy/Documents/code/web/Grief/frontend/src/components/ForgotPasswordModal.jsx) | `U2` | ✅ Verified |
-| **F4** | Grievance submission ($\le 4$ steps, category, location, photo $\le 5$MB, confidential flag) | [`TicketService.create_ticket()`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/services/ticket_service.py#L46-L151), [`upload.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/core/upload.py) | `U3` | ✅ Verified |
+| **F4** | Grievance submission ($\le 4$ steps, category, location, photo $\le 5$MB) | [`TicketService.create_ticket()`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/services/ticket_service.py), [`upload.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/core/upload.py) | `U3` | ✅ Verified |
 | **F5** | Unique ticket ID generation (`TKT-YYYY-XXXX`) & default `OPEN` status | [`TicketService.generate_ticket_id()`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/services/ticket_service.py#L38-L44) | `U3` | ✅ Verified |
 | **F6** | Real-time duplicate grievance detection ($< 2$s latency) | [`DeduplicationEngine`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/services/deduplication_service.py) | `U3` | ✅ Verified |
 | **F7** | Duplicate handling: "Support" (duplicate child) vs "Submit Anyway" (flagged `OPEN`) | [`Ticket.link_to_parent()`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/models/ticket.py#L94-L100), [`RaiseGrievanceModal.jsx`](file:///home/soham-roy/Documents/code/web/Grief/frontend/src/components/RaiseGrievanceModal.jsx) | `U3` | ✅ Verified |
@@ -77,7 +77,7 @@ The **Campus Grievance Addressal System (CGAS)** modernizes campus facilities ma
 | **F14** | Master record management: student CSV bulk import, staff roster, category CRUD | [`AdminService`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/services/admin_service.py), [`Category.can_be_deleted()`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/models/category.py#L30-L37) | `U8` | ✅ Verified |
 | **F15** | Immutable system-wide audit logging & summary CSV report generation | [`AuditLog`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/models/audit_log.py), [`AdminService.export_report_csv()`](file:///home/soham-roy/Documents/code/web/Grief/backend/app/services/admin_service.py#L430-L482) | `U9` | ✅ Verified |
 | **NFR 4.1** | Performance: pages load $<3$s; deduplication check $<2$s; queue sort $<2$s | Tested in [`test_security_performance.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_security_performance.py) | - | ✅ Verified |
-| **NFR 4.2** | Security: salted bcrypt, 15m session, 5m OTP, magic bytes photo check, confidential tickets | Tested in [`test_security_performance.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_security_performance.py) & [`test_auth.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_auth.py) | - | ✅ Verified |
+| **NFR 4.2** | Security: salted bcrypt, 15m session, 5m OTP, magic bytes photo check | Tested in [`test_security_performance.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_security_performance.py) & [`test_auth.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_auth.py) | - | ✅ Verified |
 | **NFR 5** | Portability: Seamless execution on Linux and Windows servers | Tested in [`test_cross_platform.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_cross_platform.py), [`run_dev.sh`](file:///home/soham-roy/Documents/code/web/Grief/run_dev.sh), [`run_dev.bat`](file:///home/soham-roy/Documents/code/web/Grief/run_dev.bat) | - | ✅ Verified |
 
 ---
@@ -123,7 +123,6 @@ classDiagram
         +string location
         +string description
         +string photo_url
-        +bool is_confidential
         +string status
         +bool is_flagged_duplicate
         +datetime resolved_at
@@ -431,7 +430,7 @@ cd backend
 | [`test_feedback_reopen.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_feedback_reopen.py) | 5 | 1–5 star rating validation (F13), 7-day reopen window, student authorization checks |
 | [`test_admin_records.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_admin_records.py) | 6 | Single student CRUD, bulk CSV import (F14), category safety rules, CSV reports (F15) |
 | [`test_serviceman.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_serviceman.py) | 8 | Serviceman role, active workload counts, IN_PROGRESS resolution lock, CSV import |
-| [`test_security_performance.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_security_performance.py) | 4 | SQL injection defense, confidential ticket privacy, $< 2$s deduplication benchmark |
+| [`test_security_performance.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_security_performance.py) | 3 | SQL injection defense, $< 2$s deduplication benchmark |
 | [`test_cross_platform.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_cross_platform.py) | 4 | Windows & Linux compatibility (NFR 5), MongoDB URI format, CRLF/LF line-endings |
 | **Total** | **53** | **100% Passing Test Suite** |
 

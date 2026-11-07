@@ -7,7 +7,6 @@ import {
   Calendar, 
   Clock, 
   HardHat, 
-  Shield, 
   Layers, 
   CopyCheck, 
   ChevronDown, 
@@ -245,12 +244,6 @@ export default function AdminTicketQueue() {
                       <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${getStatusBadge(t.status)}`}>
                         {t.status}
                       </span>
-                      {t.is_confidential && (
-                        <span className="inline-flex items-center space-x-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300">
-                          <Shield className="w-3 h-3 text-amber-600" />
-                          <span>Confidential</span>
-                        </span>
-                      )}
                       {t.is_flagged_duplicate && (
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
                           Flagged Duplicate

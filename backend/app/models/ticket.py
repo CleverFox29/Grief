@@ -20,7 +20,7 @@ from app.config import settings
 class Ticket(Document, TimestampMixin):
     """
     Ticket entity representing a campus grievance (F4, F5).
-    Maintains lifecycle status, assignment, duplicate linkages, and confidentiality.
+    Maintains lifecycle status, assignment, and duplicate linkages.
     """
     meta = {
         "collection": "tickets",
@@ -51,8 +51,9 @@ class Ticket(Document, TimestampMixin):
     location = StringField(required=True, max_length=150)
     description = StringField(required=True)
     description_embedding = ListField(FloatField(), default=list)
-    photo_url = StringField(max_length=255, null=True)
+    # Legacy field retained so pre-existing MongoDB records still deserialize.
     is_confidential = BooleanField(default=False, required=True)
+    photo_url = StringField(max_length=255, null=True)
     status = StringField(default=TicketStatus.OPEN.value, required=True, max_length=30)
     is_flagged_duplicate = BooleanField(default=False, required=True)
     

@@ -68,39 +68,6 @@ def test_sql_injection_defense_in_search(client, sec_setup, db_session):
         # Database table remains fully intact
         assert db_session.query(Ticket).count() >= 1
 
-def test_confidential_grievance_strict_isolation(client, sec_setup, db_session):
-    """F4, NFR 4.2: Confidential ticket is strictly isolated from non-author students."""
-    cat = sec_setup["cat"]
-    s1 = sec_setup["s1"]
-    s1_header = sec_setup["s1_header"]
-    s2_header = sec_setup["s2_header"]
-    admin_header = sec_setup["admin_header"]
-
-    conf_ticket = Ticket(
-        ticket_id="TKT-CONF-01",
-        student_id=s1.id,
-        category_id=cat.id,
-        location="Hostel 3 Common Room",
-        description="Harassment report containing sensitive student names",
-        is_confidential=True
-    )
-    db_session.add(conf_ticket)
-    db_session.commit()
-
-    # Author student can view their own confidential ticket
-    author_resp = client.get(f"/api/tickets/{conf_ticket.id}", headers=s1_header)
-    assert author_resp.status_code == 200
-
-    # Peer student Bob is strictly blocked (HTTP 403 Forbidden)
-    peer_resp = client.get(f"/api/tickets/{conf_ticket.id}", headers=s2_header)
-    assert peer_resp.status_code == 403
-    assert "Access denied" in peer_resp.json()["detail"] or "confidential" in peer_resp.json()["detail"]
-
-    # Admin can view confidential grievance
-    admin_resp = client.get(f"/api/tickets/{conf_ticket.id}", headers=admin_header)
-    assert admin_resp.status_code == 200
-    assert admin_resp.json()["is_confidential"] is True
-
 def test_deduplication_performance_benchmark(db_session, sec_setup):
     """NFR 4.1: Deduplication engine executes in under 2 seconds across large candidate pools."""
     cat = sec_setup["cat"]

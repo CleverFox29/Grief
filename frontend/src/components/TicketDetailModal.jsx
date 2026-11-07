@@ -6,7 +6,6 @@ import {
   User, 
   Calendar, 
   Clock, 
-  Shield, 
   CheckCircle2, 
   AlertCircle, 
   Layers, 
@@ -280,12 +279,6 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
                   <span className={`text-xs font-bold px-3 py-1 rounded-full border ${getStatusBadge(ticket.status)}`}>
                     {ticket.status}
                   </span>
-                  {ticket.is_confidential && (
-                    <span className="inline-flex items-center space-x-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300">
-                      <Shield className="w-3 h-3 text-amber-600" />
-                      <span>Confidential</span>
-                    </span>
-                  )}
                   {ticket.is_flagged_duplicate && (
                     <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
                       Flagged Duplicate

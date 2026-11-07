@@ -51,7 +51,6 @@ class TicketService:
         location: str,
         description: str,
         photo_file: Optional[UploadFile] = None,
-        is_confidential: bool = False,
         action: str = "CREATE",
         parent_ticket_id: Optional[int] = None
     ) -> Ticket:
@@ -98,7 +97,6 @@ class TicketService:
             location=location.strip(),
             description=description.strip(),
             photo_url=photo_url,
-            is_confidential=is_confidential,
             status=initial_status,
             is_flagged_duplicate=is_flagged,
             parent_ticket_id=parent.id if parent else None
@@ -190,7 +188,6 @@ class TicketService:
                     location=child.location,
                     description=child.description,
                     photo_url=child.photo_url,
-                    is_confidential=child.is_confidential,
                     status=child.status,
                     is_flagged_duplicate=child.is_flagged_duplicate,
                     parent_ticket_id=child.parent_ticket_id,
@@ -228,7 +225,6 @@ class TicketService:
             location=t.location,
             description=t.description,
             photo_url=t.photo_url,
-            is_confidential=t.is_confidential,
             status=t.status,
             is_flagged_duplicate=t.is_flagged_duplicate,
             parent_ticket_id=t.parent_ticket_id,
@@ -324,12 +320,7 @@ class TicketService:
             if ticket.student_id != current_user.id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-        if ticket.is_confidential and current_user.role != UserRole.ADMIN.value and ticket.student_id != current_user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This ticket is marked confidential.")
-
         if current_user.role == UserRole.SERVICEMAN.value:
-            if ticket.is_confidential:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This ticket is marked confidential.")
             is_assigned = (ticket.assigned_serviceman_id == current_user.id or ticket.assigned_staff_id == current_user.id)
             if not is_assigned:
                 raise HTTPException(
@@ -395,7 +386,6 @@ class TicketService:
             location=ticket.location,
             description=ticket.description,
             photo_url=ticket.photo_url,
-            is_confidential=ticket.is_confidential,
             status=ticket.status,
             is_flagged_duplicate=ticket.is_flagged_duplicate,
             parent_ticket_id=ticket.parent_ticket_id,

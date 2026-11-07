@@ -138,7 +138,7 @@ def suggest_ticket_duplicates(
     current_user: User = Depends(require_student),
     db = Depends(get_db),
 ):
-    """Live as-you-type suggestions for unresolved, non-confidential tickets."""
+    """Live as-you-type suggestions for unresolved tickets."""
     matches = DeduplicationEngine.check_duplicates(
         db, category_id, location, query, limit=5,
         threshold=DeduplicationEngine.LIVE_SUGGESTION_THRESHOLD,
@@ -163,7 +163,6 @@ def raise_grievance(
     category_id: int = Form(...),
     location: str = Form(...),
     description: str = Form(...),
-    is_confidential: bool = Form(False),
     action: str = Form("CREATE"),
     parent_ticket_id: Optional[int] = Form(None),
     photo: Optional[UploadFile] = File(None),
@@ -178,7 +177,6 @@ def raise_grievance(
         location=location,
         description=description,
         photo_file=photo,
-        is_confidential=is_confidential,
         action=action,
         parent_ticket_id=parent_ticket_id
     )
@@ -192,7 +190,6 @@ def raise_grievance(
         location=ticket.location,
         description=ticket.description,
         photo_url=ticket.photo_url,
-        is_confidential=ticket.is_confidential,
         status=ticket.status,
         is_flagged_duplicate=ticket.is_flagged_duplicate,
         parent_ticket_id=ticket.parent_ticket_id,

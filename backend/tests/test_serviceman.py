@@ -21,7 +21,6 @@ def test_serviceman_inheritance_and_properties(db_session):
     assert serviceman.category == "Carpentry"
     assert serviceman.phone_number == "+91-9876543299"
     assert serviceman.verify_password("Pass1234") is True
-    assert serviceman.can_view_confidential_tickets() is False
 
 def test_serviceman_ticket_workflow(client, student_auth_header, admin_auth_header, db_session):
     """

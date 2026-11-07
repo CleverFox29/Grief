@@ -69,11 +69,6 @@ class User(Document, TimestampMixin):
         self.failed_login_attempts = 0
         self.locked_until = None
 
-    def can_view_confidential_tickets(self) -> bool:
-        """Determine if user has privilege to view confidential grievances."""
-        return self.role == UserRole.ADMIN.value
-
-
 class Student(User):
     """
     Student entity inheriting from User.

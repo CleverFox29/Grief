@@ -197,9 +197,6 @@ class DeduplicationEngine:
             score = cls._score(location, description, ticket, query_vector)
             if score["overall"] < minimum_score:
                 continue
-            # Student suggestions must not disclose confidential grievances filed by others.
-            if ticket.is_confidential:
-                continue
             matches.append({
                 "id": ticket.id,
                 "ticket_id": ticket.ticket_id,

@@ -102,7 +102,6 @@ class TicketCreate(BaseModel):
     location: str = Field(..., max_length=150, description="Specific location on campus")
     description: str = Field(..., min_length=10, description="Detailed description of the issue")
     photo_url: Optional[str] = Field(None, description="URL of the uploaded grievance photo")
-    is_confidential: bool = Field(False, description="If True, only admins can view details")
 
 class ServicemanWorkSubmit(BaseModel):
     """Schema for a serviceman submitting their proof of work (F11.5)."""
@@ -148,7 +147,6 @@ class TicketResponse(BaseModel):
     location: str
     description: str
     photo_url: Optional[str] = None
-    is_confidential: bool
     status: str
     is_flagged_duplicate: bool
     parent_ticket_id: Optional[int] = None
@@ -178,7 +176,6 @@ class TicketItemResponse(BaseModel):
     location: str
     description: str
     photo_url: Optional[str] = None
-    is_confidential: bool
     status: str
     is_flagged_duplicate: bool
     parent_ticket_id: Optional[int] = None
@@ -216,7 +213,6 @@ class TicketDetailResponse(BaseModel):
     location: str
     description: str
     photo_url: Optional[str] = None
-    is_confidential: bool
     status: str
     is_flagged_duplicate: bool
     parent_ticket_id: Optional[int] = None

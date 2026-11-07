@@ -4,7 +4,6 @@ import {
   X, 
   Upload, 
   AlertTriangle, 
-  Shield, 
   CheckCircle2, 
   ArrowRight, 
   Image as ImageIcon, 
@@ -26,7 +25,6 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
   const [categoryId, setCategoryId] = useState('');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
-  const [isConfidential, setIsConfidential] = useState(false);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   
@@ -223,7 +221,6 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
     formData.append('category_id', categoryId);
     formData.append('location', location.trim());
     formData.append('description', description.trim());
-    formData.append('is_confidential', isConfidential);
     formData.append('action', action);
     if (parentId) {
       formData.append('parent_ticket_id', parentId);
@@ -260,7 +257,6 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
     setStep(1);
     setLocation('');
     setDescription('');
-    setIsConfidential(false);
     removePhoto();
     setDuplicateMatches([]);
     setCreatedTicket(null);
@@ -441,28 +437,7 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
                   )}
                 </div>
 
-                {/* Confidential Marking Box */}
                 <div className="flex flex-col justify-between">
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-                    <label className="flex items-start space-x-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isConfidential}
-                        onChange={(e) => setIsConfidential(e.target.checked)}
-                        className="mt-0.5 rounded text-teal-600 focus:ring-teal-500 w-4 h-4"
-                      />
-                      <div>
-                        <span className="text-xs font-semibold text-slate-800 flex items-center space-x-1">
-                          <Shield className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Confidential Grievance</span>
-                        </span>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Restricts visibility strictly to Administrators. Recommended for sensitive security or personal safety reports (F4).
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-
                   <div className="text-[11px] text-slate-400 mt-2">
                     &bull; Real-time duplicate detection will compare against open campus tickets.
                   </div>
