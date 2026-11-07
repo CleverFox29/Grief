@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   X, 
@@ -37,6 +37,14 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [liveMatches, setLiveMatches] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const suggestionRequest = useRef(null);
+  const suggestionPanelRef = useRef(null);
+  const descriptionFieldRef = useRef(null);
+  const [categorySuggestion, setCategorySuggestion] = useState(null);
+  const [categorySuggestionLoading, setCategorySuggestionLoading] = useState(false);
+  const categoryRequest = useRef(null);
 
   // Fetch active categories on mount
   useEffect(() => {
@@ -52,6 +60,86 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
         .catch(() => setErrorMsg('Failed to load categories.'));
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (suggestionRequest.current) clearTimeout(suggestionRequest.current.timer);
+    const hasOneWord = description.trim().split(/\s+/).some(Boolean);
+    if (!isOpen || step !== 1 || !hasOneWord || !categoryId) {
+      setLiveMatches([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    suggestionRequest.current = { controller, timer: setTimeout(async () => {
+      setSuggestionsLoading(true);
+      const params = new URLSearchParams({ category_id: categoryId, location: location.trim(), query: description.trim() });
+      try {
+        const resp = await fetch(`/api/tickets/suggestions?${params}`, {
+          headers: { Authorization: `Bearer ${token}` }, signal: controller.signal
+        });
+        if (!resp.ok) throw new Error('Suggestion lookup failed');
+        const data = await resp.json();
+        setLiveMatches(data.matches || []);
+      } catch (err) {
+        if (err.name !== 'AbortError') setLiveMatches([]);
+      } finally {
+        if (!controller.signal.aborted) setSuggestionsLoading(false);
+      }
+    }, 300) };
+    return () => {
+      clearTimeout(suggestionRequest.current?.timer);
+      controller.abort();
+    };
+  }, [isOpen, step, categoryId, location, description, token]);
+
+  useEffect(() => {
+    if (!liveMatches.length) return;
+    const dismissOnOutsideClick = (event) => {
+      if (!suggestionPanelRef.current?.contains(event.target) && !descriptionFieldRef.current?.contains(event.target)) {
+        setLiveMatches([]);
+      }
+    };
+    document.addEventListener('mousedown', dismissOnOutsideClick);
+    document.addEventListener('touchstart', dismissOnOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', dismissOnOutsideClick);
+      document.removeEventListener('touchstart', dismissOnOutsideClick);
+    };
+  }, [liveMatches.length]);
+
+  useEffect(() => {
+    if (categoryRequest.current) clearTimeout(categoryRequest.current.timer);
+    setCategorySuggestion(null);
+    setCategorySuggestionLoading(false);
+    const hasOneWord = description.trim().split(/\s+/).some(Boolean);
+    if (!isOpen || step !== 1 || !hasOneWord || categories.length < 2) {
+      setCategorySuggestionLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    categoryRequest.current = { controller, timer: setTimeout(async () => {
+      setCategorySuggestionLoading(true);
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const params = new URLSearchParams({ query: description.trim() });
+        const resp = await fetch(`/api/tickets/category-suggestion?${params}`, {
+          headers: { Authorization: `Bearer ${token}` }, signal: controller.signal
+        });
+        if (!resp.ok) throw new Error('Category suggestion failed');
+        const data = await resp.json();
+        setCategorySuggestion(data.suggestion || null);
+      } catch (err) {
+        if (err.name !== 'AbortError') setCategorySuggestion(null);
+      } finally {
+        clearTimeout(timeout);
+        if (!controller.signal.aborted) setCategorySuggestionLoading(false);
+      }
+    }, 300) };
+    return () => {
+      clearTimeout(categoryRequest.current?.timer);
+      controller.abort();
+    };
+  }, [isOpen, step, description, categories, token]);
 
   if (!isOpen) return null;
 
@@ -167,6 +255,8 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
   };
 
   const handleResetAndClose = () => {
+    suggestionRequest.current?.controller.abort();
+    setLiveMatches([]);
     setStep(1);
     setLocation('');
     setDescription('');
@@ -233,6 +323,16 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
                       </option>
                     ))}
                   </select>
+                  {(categorySuggestionLoading || (categorySuggestion && String(categorySuggestion.id) !== String(categoryId))) && (
+                    <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-900">
+                      {categorySuggestionLoading ? 'Checking the best category…' : (
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Description may fit <strong>{categorySuggestion.name}</strong> better.</span>
+                          <button type="button" onClick={() => setCategoryId(String(categorySuggestion.id))} className="shrink-0 font-bold underline underline-offset-2">Switch</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -270,14 +370,42 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
                   <FileText className="w-3.5 h-3.5 text-teal-600" />
                   <span>Issue Description *</span>
                 </label>
-                <textarea
-                  rows={4}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the fault clearly. What is damaged or malfunctioning?"
-                  required
-                  className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <div className="relative">
+                  <textarea
+                    ref={descriptionFieldRef}
+                    rows={4}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Describe the fault clearly. What is damaged or malfunctioning?"
+                    required
+                    className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  {(suggestionsLoading || liveMatches.length > 0) && (
+                  <div ref={suggestionPanelRef} className="absolute left-0 right-0 top-full z-40 mt-1 rounded-xl border border-teal-200 bg-white shadow-xl overflow-hidden max-h-40 flex flex-col" aria-live="polite">
+                    <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-600 border-b border-slate-100 shrink-0">
+                {suggestionsLoading ? 'Checking for similar open grievances…' : 'Possible existing grievances'}
+                    </div>
+                    <div className="overflow-y-auto">
+                    {liveMatches.map(match => (
+                      <div key={match.id} className="px-3 py-2 border-b last:border-b-0 border-slate-100 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-800">#{match.ticket_id} · {match.status}</div>
+                          <div className="mt-1 text-[11px] text-slate-500">{match.location}</div>
+                          <p className="mt-0.5 text-[11px] leading-snug text-slate-700 line-clamp-2">
+                            <span className="font-semibold text-slate-600">Existing issue: </span>
+                            {match.description_snippet || match.description}
+                          </p>
+                          {match.assigned_staff_name && <div className="text-[10px] text-slate-500">Assigned to {match.assigned_staff_name}</div>}
+                        </div>
+                        <button type="button" disabled={loading} onClick={() => submitTicket('SUPPORT', match.id)} className="shrink-0 rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-teal-700 disabled:opacity-50">
+                          This is my issue too
+                        </button>
+                      </div>
+                    ))}
+                    </div>
+                  </div>
+                )}
+                </div>
               </div>
 
               {/* Photo Upload & Confidential Toggle */}

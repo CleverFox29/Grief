@@ -103,6 +103,12 @@ class TicketService:
             is_flagged_duplicate=is_flagged,
             parent_ticket_id=parent.id if parent else None
         )
+        # Embedding is computed once when the record is created, then reused for live searches.
+        try:
+            from app.services.deduplication_service import EmbeddingProvider
+            new_ticket.description_embedding = EmbeddingProvider.encode(new_ticket.description) or []
+        except Exception:
+            new_ticket.description_embedding = []
         new_ticket.save()
 
         # Initial timeline entry

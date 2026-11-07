@@ -77,7 +77,7 @@ trap cleanup SIGINT SIGTERM EXIT
 # 7. Start FastAPI Backend on port 8000
 echo ""
 echo "[START] Launching FastAPI backend on http://localhost:8000..."
-./backend/venv/bin/uvicorn app.main:app --reload --port 8000 --app-dir backend &
+./backend/venv/bin/uvicorn app.main:app --reload --reload-dir backend --port 8000 --app-dir backend &
 
 # 8. Start Vite Frontend on port 5173
 echo "[START] Launching Vite React frontend on http://localhost:5173..."

@@ -130,6 +130,34 @@ def check_ticket_duplicates(
         matches=matches
     )
 
+@router.get("/tickets/suggestions", response_model=DuplicateCheckResponse)
+def suggest_ticket_duplicates(
+    category_id: int = Query(..., gt=0),
+    location: str = Query("", max_length=150),
+    query: str = Query(..., min_length=1, max_length=1000),
+    current_user: User = Depends(require_student),
+    db = Depends(get_db),
+):
+    """Live as-you-type suggestions for unresolved, non-confidential tickets."""
+    matches = DeduplicationEngine.check_duplicates(
+        db, category_id, location, query, limit=5,
+        threshold=DeduplicationEngine.LIVE_SUGGESTION_THRESHOLD,
+    )
+    return DuplicateCheckResponse(has_duplicates=bool(matches), count=len(matches), matches=matches)
+
+
+@router.get("/tickets/category-suggestion")
+def suggest_ticket_category(
+    query: str = Query(..., min_length=1, max_length=1000),
+    current_user: User = Depends(require_student),
+    db = Depends(get_db),
+):
+    """Suggest the best active category for the issue description."""
+    categories = list(Category.objects(is_active=True).order_by("+name"))
+    from app.services.deduplication_service import EmbeddingProvider
+    result = EmbeddingProvider.suggest_category(query, categories)
+    return {"suggestion": result}
+
 @router.post("/tickets", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
 def raise_grievance(
     category_id: int = Form(...),

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # Database (MongoDB)
     MONGODB_URL: str = "mongodb://localhost:27017/cgas_db"
     MONGODB_DB_NAME: str = "cgas_db"
+
+    # Semantic matching (keep the API key server-side; never expose it to React).
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
+    GEMINI_EMBEDDING_DIMENSIONS: int = 768
     DATABASE_URL: Optional[str] = None
     
     # Security
