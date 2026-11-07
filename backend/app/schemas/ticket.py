@@ -27,6 +27,18 @@ class StaffResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ServicemanResponse(BaseModel):
+    id: int
+    user_id: str
+    name: str
+    category: str
+    phone: Optional[str] = None
+    email: str
+    is_active: bool = True
+
+    class Config:
+        from_attributes = True
+
 # ----------------- Duplicate Detection -----------------
 class DuplicateCheckRequest(BaseModel):
     category_id: int = Field(..., description="ID of grievance category")
@@ -94,12 +106,16 @@ class TicketCreate(BaseModel):
 class ServicemanWorkSubmit(BaseModel):
     """Schema for a serviceman submitting their proof of work (F11.5)."""
     proof_of_work_url: Optional[str] = Field(None, description="URL of the uploaded proof image")
-    serviceman_remark: str = Field(..., min_length=5, max_length=1000, description="Explanation of the fix")
+    serviceman_remark: str = Field(..., min_length=3, max_length=1000, description="Explanation of the fix")
+
+class TicketScheduleRequest(BaseModel):
+    """Schema for a serviceman scheduling a visit."""
+    scheduling_remark: str = Field(..., min_length=3, max_length=500, description="Visit schedule note (e.g. 'I will come on Monday at 3 PM')")
 
 class TicketResolveRequest(BaseModel):
     status: TicketStatus = Field(default=TicketStatus.PENDING_CONFIRMATION)
-    serviceman_remark: str = Field(..., min_length=5, description="Explanation of the fix")
-    proof_of_work_url: Optional[str] = Field(None, description="Optional proof of work URL")
+    serviceman_remark: str = Field(..., min_length=3, max_length=1000, description="Explanation of the fix")
+    proof_of_work_url: Optional[str] = Field(None, description="Optional proof of work URL showing completed repair")
 
 class StudentConfirmRequest(BaseModel):
     """Schema for a student confirming or rejecting a serviceman's fix (F13)."""
@@ -112,6 +128,10 @@ class TicketUpdate(BaseModel):
     assigned_serviceman_id: Optional[int] = Field(None, description="ID of the assigned Serviceman")
     status: Optional[str] = Field(None, description="Force update status")
     is_flagged_duplicate: Optional[bool] = None
+
+class TicketCloseRequest(BaseModel):
+    """Schema for admin manually closing any ticket (F11)."""
+    remark: str = Field(default="Closed manually by administrator.", min_length=1, max_length=1000, description="Closure remark or rationale")
 
 class TicketLinkRequest(BaseModel):
     """Schema for linking a ticket as a duplicate."""
@@ -133,6 +153,8 @@ class TicketResponse(BaseModel):
     parent_ticket_id: Optional[int] = None
     assigned_staff_id: Optional[int] = None
     assigned_serviceman_id: Optional[int] = None
+    scheduling_remark: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
     proof_of_work_url: Optional[str] = None
     serviceman_remark: Optional[str] = None
     student_rating: Optional[int] = None
@@ -163,6 +185,8 @@ class TicketItemResponse(BaseModel):
     assigned_staff_name: Optional[str] = None
     assigned_serviceman_id: Optional[int] = None
     assigned_serviceman_name: Optional[str] = None
+    scheduling_remark: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
     proof_of_work_url: Optional[str] = None
     serviceman_remark: Optional[str] = None
     student_rating: Optional[int] = None
@@ -202,6 +226,8 @@ class TicketDetailResponse(BaseModel):
     assigned_serviceman_id: Optional[int] = None
     assigned_serviceman_name: Optional[str] = None
     assigned_serviceman_contact: Optional[str] = None
+    scheduling_remark: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
     proof_of_work_url: Optional[str] = None
     serviceman_remark: Optional[str] = None
     student_rating: Optional[int] = None

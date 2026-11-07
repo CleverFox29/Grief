@@ -54,6 +54,8 @@ class Ticket(Document, TimestampMixin):
     is_flagged_duplicate = BooleanField(default=False, required=True)
     
     # New Serviceman Fields
+    scheduling_remark = StringField(null=True)
+    scheduled_at = DateTimeField(null=True)
     proof_of_work_url = StringField(max_length=255, null=True)
     serviceman_remark = StringField(null=True)
     
@@ -142,6 +144,23 @@ class Ticket(Document, TimestampMixin):
         """Return True if other duplicate tickets are linked to this parent ticket."""
         return len(self.duplicate_tickets) > 0
 
+    def schedule_visit(self, serviceman_id: int, scheduling_remark: str) -> None:
+        """
+        Serviceman sets scheduling note (e.g. 'I will come on Monday at 3 PM').
+        Transitions status to IN_PROGRESS.
+        """
+        if self.assigned_serviceman_id and self.assigned_serviceman_id != serviceman_id:
+            raise ValueError("Only the assigned serviceman can schedule this ticket.")
+        
+        self.assigned_serviceman_id = serviceman_id
+        if not self.assigned_staff_id:
+            self.assigned_staff_id = serviceman_id
+        self.scheduling_remark = scheduling_remark
+        self.scheduled_at = datetime.now(timezone.utc)
+        self.status = TicketStatus.IN_PROGRESS.value
+        if self._data.get("id") is not None:
+            self.save()
+
     def submit_proof_of_work(self, serviceman_id: int, proof_url: Optional[str], remark: str) -> None:
         """
         Serviceman action (F11.5). 
@@ -158,6 +177,13 @@ class Ticket(Document, TimestampMixin):
         self.status = TicketStatus.PENDING_CONFIRMATION.value
         self.resolved_at = datetime.now(timezone.utc)
         
+        if self._data.get("id") is not None:
+            self.save()
+
+    def close_manually(self, remark: str = "Closed manually by administrator.") -> None:
+        """Admin manual closure for unfixable, redundant, or resolved tickets."""
+        self.status = TicketStatus.CLOSED.value
+        self.closed_at = datetime.now(timezone.utc)
         if self._data.get("id") is not None:
             self.save()
 

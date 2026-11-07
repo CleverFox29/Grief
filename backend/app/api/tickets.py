@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, Form, File, UploadFile, Query, status, H
 
 from app.database import get_db
 from app.core.deps import get_current_user, require_student, require_admin, require_serviceman, require_serviceman_or_admin
-from app.models import User, Category, StaffRecord, Notification, Ticket
+from app.models import User, Category, StaffRecord, Notification, Ticket, Serviceman
 from app.schemas.ticket import (
     CategoryResponse,
     StaffResponse,
+    ServicemanResponse,
     DuplicateCheckRequest,
     DuplicateCheckResponse,
     TicketResponse,
@@ -19,6 +20,8 @@ from app.schemas.ticket import (
     FeedbackResponse,
     SubmitFeedbackRequest,
     ReopenTicketRequest,
+    TicketScheduleRequest,
+    TicketCloseRequest,
     TicketResolveRequest,
     StudentConfirmRequest,
     ServicemanWorkSubmit
@@ -68,6 +71,30 @@ def get_staff_records(
             notes=s.notes
         ))
     return result
+
+@router.get("/servicemen", response_model=List[ServicemanResponse])
+def get_servicemen(
+    category: Optional[str] = Query(None, description="Filter by serviceman trade/category"),
+    current_user: User = Depends(get_current_user),
+    db = Depends(get_db)
+):
+    """Retrieve active servicemen, optionally filtered by category (Admin & Servicemen)."""
+    qs = Serviceman.objects(is_active=True)
+    if category and category.strip():
+        qs = qs.filter(category__iexact=category.strip())
+    servicemen = qs.order_by("+name")
+    return [
+        ServicemanResponse(
+            id=s.id,
+            user_id=s.user_id,
+            name=s.name,
+            category=getattr(s, "category", "") or "",
+            phone=s.phone,
+            email=s.email,
+            is_active=s.is_active
+        )
+        for s in servicemen
+    ]
 
 
 # ----------------- Duplicate Check & Grievance Creation -----------------
@@ -322,6 +349,21 @@ def claim_ticket(
         serviceman=current_user
     )
 
+@router.post("/tickets/{ticket_id}/schedule", response_model=TicketDetailResponse)
+def schedule_ticket_visit(
+    ticket_id: int,
+    request: TicketScheduleRequest,
+    current_user: User = Depends(require_serviceman),
+    db = Depends(get_db)
+):
+    """Serviceman schedules visit with a remark (e.g. 'I will come on Monday at 3 PM') and marks IN PROGRESS."""
+    return TicketService.schedule_visit(
+        db=db,
+        ticket_id=ticket_id,
+        serviceman=current_user,
+        scheduling_remark=request.scheduling_remark
+    )
+
 @router.post("/tickets/{ticket_id}/resolve", response_model=TicketDetailResponse)
 def resolve_ticket(
     ticket_id: int,
@@ -329,7 +371,7 @@ def resolve_ticket(
     current_user: User = Depends(require_serviceman),
     db = Depends(get_db)
 ):
-    """Serviceman resolves ticket with remarks and proof URL, moving status to PENDING CONFIRMATION."""
+    """Serviceman resolves ticket with remarks and optional proof URL, moving status to PENDING CONFIRMATION."""
     return TicketService.resolve_ticket_by_serviceman(
         db=db,
         ticket_id=ticket_id,
@@ -341,7 +383,7 @@ def resolve_ticket(
 @router.post("/tickets/{ticket_id}/submit-proof", response_model=TicketDetailResponse)
 async def submit_proof_multipart(
     ticket_id: int,
-    remark: str = Form(..., min_length=5),
+    remark: str = Form(..., min_length=3),
     proof_url: Optional[str] = Form(None),
     proof_file: Optional[UploadFile] = File(None),
     current_user: User = Depends(require_serviceman),
@@ -373,3 +415,23 @@ def confirm_resolution(
         rating=request.rating,
         feedback=request.feedback
     )
+
+@router.post("/tickets/{ticket_id}/close", response_model=TicketDetailResponse)
+def admin_manual_close(
+    ticket_id: int,
+    request: TicketCloseRequest,
+    current_user: User = Depends(require_admin),
+    db = Depends(get_db)
+):
+    """Admin manually closes any ticket at any point in its lifecycle (F11 / manual closure)."""
+    update_data = UpdateTicketRequest(
+        status="CLOSED",
+        remark=request.remark
+    )
+    TicketService.update_ticket(
+        db=db,
+        admin_user=current_user,
+        ticket_id=ticket_id,
+        update_data=update_data
+    )
+    return TicketService.get_ticket_detail(db=db, ticket_id=ticket_id, current_user=current_user)

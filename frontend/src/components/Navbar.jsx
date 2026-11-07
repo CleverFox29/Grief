@@ -12,14 +12,16 @@ export default function Navbar({ onSelectTicketFromNotification }) {
         
         {/* Brand / Logo */}
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-500 text-slate-950 font-black flex items-center justify-center text-lg shadow-sm">
-            CG
-          </div>
+          <img
+            src="/logo.png"
+            alt="NIT Warangal Logo"
+            className="w-10 h-10 rounded-xl object-contain bg-white p-0.5 shadow-sm border border-slate-700 shrink-0"
+          />
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="text-base sm:text-lg font-bold tracking-tight">CGAS Portal</h1>
               <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider bg-slate-800 text-teal-300 border border-teal-500/30 px-2 py-0.5 rounded-full">
-                v1.0
+                NIT Warangal
               </span>
             </div>
             <p className="text-xs text-slate-400 hidden xs:block">Campus Grievance Addressal System</p>

@@ -18,7 +18,8 @@ import {
   Send,
   MessageSquare,
   Sparkles,
-  Wrench
+  Wrench,
+  Lock
 } from 'lucide-react';
 
 export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketUpdated }) {
@@ -45,6 +46,11 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
   const [isRejectPromptOpen, setIsRejectPromptOpen] = useState(false);
   const [rejectFeedback, setRejectFeedback] = useState('');
   const [confirming, setConfirming] = useState(false);
+
+  // Admin Manual Close states (F11)
+  const [isAdminCloseOpen, setIsAdminCloseOpen] = useState(false);
+  const [adminCloseRemark, setAdminCloseRemark] = useState('');
+  const [adminClosing, setAdminClosing] = useState(false);
 
   const fetchDetails = () => {
     if (!ticketId) return;
@@ -142,6 +148,36 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
       setActionError(err.message);
     } finally {
       setReopenSubmitting(false);
+    }
+  };
+
+  const handleAdminClose = async (e) => {
+    e.preventDefault();
+    setAdminClosing(true);
+    setActionError(null);
+    try {
+      const resp = await fetch(`/api/tickets/${ticket.id}/close`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          remark: adminCloseRemark.trim() || 'Closed manually by administrator.'
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Failed to close ticket.');
+
+      setFeedbackSuccessMsg('Ticket has been manually closed by administrator.');
+      setIsAdminCloseOpen(false);
+      setAdminCloseRemark('');
+      fetchDetails();
+      onTicketUpdated && onTicketUpdated();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setAdminClosing(false);
     }
   };
 
@@ -282,6 +318,56 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
                 <div className="bg-teal-50 border border-teal-200 text-teal-800 text-xs rounded-xl p-3 flex items-start space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
                   <span>{feedbackSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* ADMIN OVERRIDE MANUAL CLOSE (F11) */}
+              {user?.role === 'ADMIN' && ticket.status !== 'CLOSED' && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 text-xs text-slate-700">
+                      <Lock className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span><strong>Admin Control:</strong> Override and close this grievance at any point.</span>
+                    </div>
+                    {!isAdminCloseOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAdminCloseOpen(true)}
+                        className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold rounded-lg transition-colors text-xs"
+                      >
+                        Close Ticket Manually
+                      </button>
+                    )}
+                  </div>
+
+                  {isAdminCloseOpen && (
+                    <form onSubmit={handleAdminClose} className="pt-2 border-t border-slate-200 space-y-2">
+                      <input
+                        type="text"
+                        value={adminCloseRemark}
+                        onChange={(e) => setAdminCloseRemark(e.target.value)}
+                        placeholder="State why this ticket is being closed manually (mandatory)..."
+                        required
+                        className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                      <div className="flex justify-end space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsAdminCloseOpen(false)}
+                          className="px-3 py-1 text-xs text-slate-600 hover:bg-slate-200 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={adminClosing}
+                          className="px-3 py-1 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {adminClosing ? 'Closing...' : 'Confirm Manual Close'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               )}
 
@@ -697,6 +783,24 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
                           </p>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Scheduled Visit Note */}
+                  {ticket.scheduling_remark && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-sm space-y-1.5">
+                      <h4 className="text-xs font-bold text-blue-950 flex items-center space-x-1.5 uppercase tracking-wider">
+                        <Clock className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Scheduled Field Visit</span>
+                      </h4>
+                      <p className="text-xs text-blue-900 font-medium italic bg-white p-2.5 rounded-lg border border-blue-100">
+                        &ldquo;{ticket.scheduling_remark}&rdquo;
+                      </p>
+                      {ticket.scheduled_at && (
+                        <p className="text-[10px] text-blue-600">
+                          Visit logged on {new Date(ticket.scheduled_at).toLocaleDateString()} at {new Date(ticket.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

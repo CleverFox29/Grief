@@ -13,6 +13,7 @@ from app.schemas.auth import (
 from app.schemas.ticket import (
     CategoryResponse,
     StaffResponse,
+    ServicemanResponse,
     DuplicateCheckRequest,
     DuplicateMatch,
     DuplicateCheckResponse,
@@ -28,6 +29,8 @@ from app.schemas.ticket import (
     TicketCreate,
     StudentConfirmRequest,
     ServicemanWorkSubmit,
+    TicketScheduleRequest,
+    TicketCloseRequest,
     TicketResolveRequest,
     TicketListResponse
 )
@@ -55,6 +58,7 @@ __all__ = [
     "MessageResponse",
     "CategoryResponse",
     "StaffResponse",
+    "ServicemanResponse",
     "DuplicateCheckRequest",
     "DuplicateMatch",
     "DuplicateCheckResponse",
@@ -70,6 +74,8 @@ __all__ = [
     "TicketCreate",
     "StudentConfirmRequest",
     "ServicemanWorkSubmit",
+    "TicketScheduleRequest",
+    "TicketCloseRequest",
     "TicketResolveRequest",
     "TicketListResponse",
     "StudentCreateRequest",

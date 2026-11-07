@@ -91,6 +91,8 @@ export default function AdminTicketQueue() {
         return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'IN PROGRESS':
         return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'PENDING CONFIRMATION':
+        return 'bg-purple-100 text-purple-900 border-purple-300';
       case 'RESOLVED':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       case 'CLOSED':
@@ -173,6 +175,7 @@ export default function AdminTicketQueue() {
               <option value="">All Statuses</option>
               <option value="OPEN">OPEN</option>
               <option value="IN PROGRESS">IN PROGRESS</option>
+              <option value="PENDING CONFIRMATION">PENDING CONFIRMATION</option>
               <option value="RESOLVED">RESOLVED</option>
               <option value="CLOSED">CLOSED</option>
             </select>
@@ -292,10 +295,16 @@ export default function AdminTicketQueue() {
                         <span>{t.location}</span>
                       </span>
                       <span>Filed by: <strong>{t.student_name}</strong></span>
-                      {t.assigned_staff_name && (
-                        <span className="flex items-center space-x-1 text-teal-800 font-medium">
+                      {(t.assigned_serviceman_name || t.assigned_staff_name) && (
+                        <span className="flex items-center space-x-1 text-teal-800 font-medium bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
                           <HardHat className="w-3.5 h-3.5 text-teal-600" />
-                          <span>Staff: {t.assigned_staff_name}</span>
+                          <span>Assigned: {t.assigned_serviceman_name || t.assigned_staff_name}</span>
+                        </span>
+                      )}
+                      {t.scheduling_remark && (
+                        <span className="flex items-center space-x-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-medium">
+                          <Clock className="w-3 h-3 text-blue-600" />
+                          <span>Visit: {t.scheduling_remark}</span>
                         </span>
                       )}
                       <span className="text-slate-400">

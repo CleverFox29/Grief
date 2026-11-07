@@ -46,6 +46,12 @@ export default function ServicemanDashboard() {
   const [submittingProof, setSubmittingProof] = useState(false);
   const [proofError, setProofError] = useState(null);
 
+  // Schedule visit modal state
+  const [scheduleModalTicket, setScheduleModalTicket] = useState(null);
+  const [schedulingRemark, setSchedulingRemark] = useState('');
+  const [submittingSchedule, setSubmittingSchedule] = useState(false);
+  const [scheduleError, setScheduleError] = useState(null);
+
   // Success toast message
   const [toastMsg, setToastMsg] = useState(null);
 
@@ -114,11 +120,50 @@ export default function ServicemanDashboard() {
     }
   };
 
+  // Schedule Visit Handler
+  const handleScheduleVisit = async (e) => {
+    e.preventDefault();
+    if (!schedulingRemark.trim() || schedulingRemark.trim().length < 3) {
+      setScheduleError('Please provide a scheduling note (minimum 3 characters, e.g. "I will come on Monday at 3 PM").');
+      return;
+    }
+
+    setSubmittingSchedule(true);
+    setScheduleError(null);
+
+    try {
+      const resp = await fetch(`/api/tickets/${scheduleModalTicket.id}/schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          scheduling_remark: schedulingRemark.trim()
+        })
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Failed to schedule visit.');
+      }
+
+      showToast(`Visit scheduled for #${data.ticket_id}! Status is IN PROGRESS.`);
+      setScheduleModalTicket(null);
+      setSchedulingRemark('');
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      setScheduleError(err.message);
+    } finally {
+      setSubmittingSchedule(false);
+    }
+  };
+
   // Submit Proof of Work
   const handleSubmitProof = async (e) => {
     e.preventDefault();
-    if (!proofRemark.trim() || proofRemark.trim().length < 5) {
-      setProofError('Please provide a descriptive remark (minimum 5 characters).');
+    if (!proofRemark.trim() || proofRemark.trim().length < 3) {
+      setProofError('Please provide a descriptive remark (minimum 3 characters).');
       return;
     }
 
@@ -159,21 +204,19 @@ export default function ServicemanDashboard() {
   };
 
   // Compute metrics
-  const totalCategoryTickets = tickets.length;
-  const claimedByMe = tickets.filter(t => t.assigned_serviceman_id === user?.id).length;
+  const totalAssignedTickets = tickets.length;
+  const inProgressCount = tickets.filter(t => t.status === 'IN PROGRESS').length;
   const pendingConfirmation = tickets.filter(t => t.status === 'PENDING CONFIRMATION').length;
   const resolvedCount = tickets.filter(t => ['RESOLVED', 'CLOSED'].includes(t.status)).length;
 
   // Filtered tickets based on active tab and search
   const filteredTickets = tickets.filter(t => {
-    if (activeTab === 'ASSIGNED') {
-      if (t.assigned_serviceman_id !== user?.id) return false;
+    if (activeTab === 'IN_PROGRESS') {
+      if (t.status !== 'IN PROGRESS') return false;
     } else if (activeTab === 'PENDING_CONFIRMATION') {
       if (t.status !== 'PENDING CONFIRMATION') return false;
     } else if (activeTab === 'RESOLVED') {
       if (!['RESOLVED', 'CLOSED'].includes(t.status)) return false;
-    } else if (activeTab === 'OPEN') {
-      if (t.status !== 'OPEN') return false;
     }
 
     if (searchQuery.trim()) {
@@ -281,9 +324,9 @@ export default function ServicemanDashboard() {
             <Wrench className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Trade Queue</p>
-            <p className="text-2xl font-black text-slate-800 mt-0.5">{totalCategoryTickets}</p>
-            <p className="text-[11px] text-slate-500">{user?.category} total</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assigned to You</p>
+            <p className="text-2xl font-black text-slate-800 mt-0.5">{totalAssignedTickets}</p>
+            <p className="text-[11px] text-slate-500">Admin assigned</p>
           </div>
         </div>
 
@@ -292,9 +335,9 @@ export default function ServicemanDashboard() {
             <Clock className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Claimed by You</p>
-            <p className="text-2xl font-black text-slate-800 mt-0.5">{claimedByMe}</p>
-            <p className="text-[11px] text-amber-600 font-medium">Assigned work</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">In Progress</p>
+            <p className="text-2xl font-black text-slate-800 mt-0.5">{inProgressCount}</p>
+            <p className="text-[11px] text-amber-600 font-medium">Work active</p>
           </div>
         </div>
 
@@ -338,27 +381,17 @@ export default function ServicemanDashboard() {
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              All Category ({tickets.length})
+              All Assigned ({tickets.length})
             </button>
             <button
-              onClick={() => setActiveTab('OPEN')}
+              onClick={() => setActiveTab('IN_PROGRESS')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'OPEN'
-                  ? 'bg-white text-blue-700 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Available to Claim ({tickets.filter(t => t.status === 'OPEN').length})
-            </button>
-            <button
-              onClick={() => setActiveTab('ASSIGNED')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'ASSIGNED'
+                activeTab === 'IN_PROGRESS'
                   ? 'bg-white text-amber-700 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              My Work ({claimedByMe})
+              In Progress ({inProgressCount})
             </button>
             <button
               onClick={() => setActiveTab('PENDING_CONFIRMATION')}
@@ -420,9 +453,9 @@ export default function ServicemanDashboard() {
             <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-200 text-slate-400 flex items-center justify-center mx-auto mb-3">
               <Wrench className="w-8 h-8 text-slate-300" />
             </div>
-            <h3 className="text-base font-bold text-slate-800">No tickets found</h3>
+            <h3 className="text-base font-bold text-slate-800">No assigned tickets found</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-              There are currently no tickets matching this filter in your trade category ({user?.category}).
+              Issues in your trade division ({user?.category}) will appear here once an administrator assigns them to you.
             </p>
           </div>
         )}
@@ -522,6 +555,24 @@ export default function ServicemanDashboard() {
                       </div>
                     )}
 
+                    {/* Scheduled Visit Notice */}
+                    {ticket.scheduling_remark && (
+                      <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3 text-xs space-y-1">
+                        <div className="flex items-center space-x-1.5 text-blue-900 font-bold">
+                          <Clock className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Scheduled Field Visit</span>
+                        </div>
+                        <p className="text-blue-800 italic text-[11px]">
+                          &ldquo;{ticket.scheduling_remark}&rdquo;
+                        </p>
+                        {ticket.scheduled_at && (
+                          <p className="text-[10px] text-blue-600">
+                            Visit logged on {new Date(ticket.scheduled_at).toLocaleDateString()} at {new Date(ticket.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Student Feedback Snippet (if resolved) */}
                     {ticket.student_rating && (
                       <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-3 text-xs space-y-1">
@@ -560,14 +611,19 @@ export default function ServicemanDashboard() {
                     </button>
 
                     <div className="flex items-center space-x-2">
-                      {/* Claim Button */}
-                      {canClaim && (
+                      {/* Schedule Visit Button */}
+                      {['OPEN', 'IN PROGRESS'].includes(ticket.status) && (
                         <button
-                          onClick={() => handleClaimTicket(ticket.id)}
-                          className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-1.5 px-3 rounded-xl shadow-sm transition-colors"
+                          onClick={() => {
+                            setScheduleModalTicket(ticket);
+                            setSchedulingRemark(ticket.scheduling_remark || '');
+                            setScheduleError(null);
+                          }}
+                          className="inline-flex items-center space-x-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold py-1.5 px-3 rounded-xl transition-colors shadow-sm"
+                          title="Schedule inspection or service visit"
                         >
-                          <Wrench className="w-3.5 h-3.5" />
-                          <span>Claim Ticket</span>
+                          <Clock className="w-3.5 h-3.5 text-blue-600" />
+                          <span>{ticket.scheduling_remark ? 'Reschedule' : 'Schedule Visit'}</span>
                         </button>
                       )}
 
@@ -732,6 +788,90 @@ export default function ServicemanDashboard() {
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Visit Modal */}
+      {scheduleModalTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Clock className="w-5 h-5 text-blue-400" />
+                <h3 className="font-bold text-sm">
+                  Schedule Field Visit &bull; #{scheduleModalTicket.ticket_id}
+                </h3>
+              </div>
+              <button
+                onClick={() => setScheduleModalTicket(null)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleScheduleVisit} className="p-6 space-y-4">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs text-slate-700 space-y-1">
+                <p><strong>Location:</strong> {scheduleModalTicket.location}</p>
+                <p><strong>Student:</strong> {scheduleModalTicket.student_name}</p>
+                <p><strong>Issue:</strong> {scheduleModalTicket.description}</p>
+              </div>
+
+              {scheduleError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl p-3 flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{scheduleError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Visit Schedule Remark * (Visible to Student)
+                </label>
+                <input
+                  type="text"
+                  value={schedulingRemark}
+                  onChange={(e) => setSchedulingRemark(e.target.value)}
+                  placeholder="e.g. I will come on Monday at 3 PM to inspect and repair"
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Setting this will inform the resident student and mark the ticket IN PROGRESS.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setScheduleModalTicket(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingSchedule}
+                  className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm transition-all disabled:opacity-50"
+                >
+                  {submittingSchedule ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Confirm Schedule</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

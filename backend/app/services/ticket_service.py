@@ -192,6 +192,8 @@ class TicketService:
                     assigned_staff_name=child_staff_name or child_serviceman_name,
                     assigned_serviceman_id=child.assigned_serviceman_id,
                     assigned_serviceman_name=child_serviceman_name,
+                    scheduling_remark=child.scheduling_remark,
+                    scheduled_at=child.scheduled_at,
                     proof_of_work_url=child.proof_of_work_url,
                     serviceman_remark=child.serviceman_remark,
                     student_rating=child_rating,
@@ -228,6 +230,8 @@ class TicketService:
             assigned_staff_name=t_staff_name or t_serviceman_name,
             assigned_serviceman_id=t.assigned_serviceman_id,
             assigned_serviceman_name=t_serviceman_name,
+            scheduling_remark=t.scheduling_remark,
+            scheduled_at=t.scheduled_at,
             proof_of_work_url=t.proof_of_work_url,
             serviceman_remark=t.serviceman_remark,
             student_rating=t_rating,
@@ -320,12 +324,12 @@ class TicketService:
         if current_user.role == UserRole.SERVICEMAN.value:
             if ticket.is_confidential:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This ticket is marked confidential.")
-            serviceman_cat = getattr(current_user, "category", "") or ""
-            ticket_cat = ticket.category.name if ticket.category else ""
-            is_assigned = (ticket.assigned_serviceman_id == current_user.id)
-            is_same_cat = serviceman_cat and ticket_cat and (serviceman_cat.strip().lower() == ticket_cat.strip().lower())
-            if not (is_assigned or is_same_cat):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: Ticket does not belong to your service category.")
+            is_assigned = (ticket.assigned_serviceman_id == current_user.id or ticket.assigned_staff_id == current_user.id)
+            if not is_assigned:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: This ticket has not been assigned to you by an administrator."
+                )
 
         # Timeline logs
         logs_response = []
@@ -396,6 +400,8 @@ class TicketService:
             assigned_serviceman_id=ticket.assigned_serviceman_id,
             assigned_serviceman_name=serviceman_name,
             assigned_serviceman_contact=serviceman_contact,
+            scheduling_remark=ticket.scheduling_remark,
+            scheduled_at=ticket.scheduled_at,
             proof_of_work_url=ticket.proof_of_work_url,
             serviceman_remark=ticket.serviceman_remark,
             student_rating=student_rating,
@@ -461,12 +467,17 @@ class TicketService:
                 if not new_serviceman:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serviceman user not found.")
                 ticket.assigned_serviceman_id = new_serviceman.id
+                if not ticket.assigned_staff_id:
+                    ticket.assigned_staff_id = new_serviceman.id
                 staff_changed = True
                 new_staff = new_serviceman
+                if ticket.status == TicketStatus.OPEN.value and not update_data.status:
+                    ticket.status = TicketStatus.IN_PROGRESS.value
+                    status_changed = True
 
         now = datetime.now(timezone.utc)
         if status_changed:
-            target_status = update_data.status.upper()
+            target_status = (update_data.status or ticket.status).upper()
             valid_statuses = [s.value for s in TicketStatus]
             if target_status not in valid_statuses:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid status: {target_status}")
@@ -660,26 +671,15 @@ class TicketService:
         serviceman: User,
         search: Optional[str] = None,
         status_filter: Optional[str] = None,
-        assigned_only: bool = False
+        assigned_only: bool = True
     ) -> List[TicketItemResponse]:
         """
-        Retrieve tickets relevant to an authenticated serviceman (category-based or assigned).
-        Excludes confidential tickets unless explicitly assigned to this serviceman.
+        Retrieve tickets assigned to an authenticated serviceman.
+        Tickets are strictly visible only after an administrator assigns them to this serviceman.
         """
-        cat_ids = []
-        if getattr(serviceman, "category", None):
-            matched_cats = Category.objects(name__iexact=serviceman.category.strip())
-            cat_ids = [c.id for c in matched_cats]
-
-        if assigned_only:
-            qs = Ticket.objects(assigned_serviceman_id=serviceman.id)
-        elif cat_ids:
-            qs = Ticket.objects(
-                (Q(category_id__in=cat_ids) & Q(is_confidential=False)) |
-                Q(assigned_serviceman_id=serviceman.id)
-            )
-        else:
-            qs = Ticket.objects(assigned_serviceman_id=serviceman.id)
+        qs = Ticket.objects(
+            Q(assigned_serviceman_id=serviceman.id) | Q(assigned_staff_id=serviceman.id)
+        )
 
         if status_filter and status_filter.upper() != "ALL":
             qs = qs.filter(status=status_filter.upper())
@@ -747,6 +747,64 @@ class TicketService:
         return cls.get_ticket_detail(db, ticket.id, serviceman)
 
     @classmethod
+    def schedule_visit(
+        cls,
+        db,
+        ticket_id: int,
+        serviceman: User,
+        scheduling_remark: str
+    ) -> TicketDetailResponse:
+        """
+        Serviceman acknowledges and records visit schedule note (e.g. 'I will come on Monday at 3 PM').
+        Transitions status to IN_PROGRESS.
+        Notifies the student.
+        """
+        ticket = Ticket.objects(id=ticket_id).first()
+        if not ticket:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+        is_assigned = (ticket.assigned_serviceman_id == serviceman.id or ticket.assigned_staff_id == serviceman.id)
+        if not is_assigned:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You can only schedule visits for tickets assigned to you by an administrator."
+            )
+
+        old_status = ticket.status
+        ticket.schedule_visit(
+            serviceman_id=serviceman.id,
+            scheduling_remark=scheduling_remark
+        )
+
+        log = TicketLog(
+            ticket_id=ticket.id,
+            performed_by_id=serviceman.id,
+            action="VISIT_SCHEDULED",
+            old_status=old_status,
+            new_status=ticket.status,
+            remark=f"Visit scheduled by {serviceman.name}: {scheduling_remark}"
+        )
+        log.save()
+
+        notification = Notification(
+            user_id=ticket.student_id,
+            ticket_id=ticket.id,
+            message=f"Serviceman {serviceman.name} scheduled a visit for ticket #{ticket.ticket_id}: '{scheduling_remark}'"
+        )
+        notification.save()
+
+        audit = AuditLog(
+            user_id=serviceman.id,
+            action=AuditAction.STATUS_CHANGED.value,
+            entity_type="TICKET",
+            entity_id=ticket.ticket_id,
+            details=f"Serviceman {serviceman.name} scheduled visit on ticket #{ticket.ticket_id}: {scheduling_remark}"
+        )
+        audit.save()
+
+        return cls.get_ticket_detail(db, ticket.id, serviceman)
+
+    @classmethod
     def resolve_ticket_by_serviceman(
         cls,
         db,
@@ -765,10 +823,11 @@ class TicketService:
         if not ticket:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
-        if ticket.assigned_serviceman_id and ticket.assigned_serviceman_id != serviceman.id:
+        is_assigned = (ticket.assigned_serviceman_id == serviceman.id or ticket.assigned_staff_id == serviceman.id)
+        if not is_assigned:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="This ticket is assigned to another serviceman."
+                detail="Access denied: You can only resolve tickets assigned to you by an administrator."
             )
 
         final_proof_url = proof_url

@@ -147,11 +147,11 @@ class Serviceman(User):
 
     def can_resolve_ticket(self, ticket) -> bool:
         """
-        Servicemen can only resolve tickets that are assigned to them 
-        and match their specific service category.
+        Servicemen can only resolve tickets that are explicitly assigned to them 
+        by an administrator and match their specific service category.
         """
         assigned_id = getattr(ticket, "assigned_serviceman_id", None) or getattr(ticket, "assigned_staff_id", None)
-        if assigned_id and assigned_id != self.id:
+        if not assigned_id or assigned_id != self.id:
             return False
 
         ticket_cat = ticket.category.name if getattr(ticket, "category", None) else None

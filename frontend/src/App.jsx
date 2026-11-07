@@ -36,7 +36,7 @@ export default function App() {
         </div>
 
         <footer className="border-t border-slate-200 py-4 px-4 bg-white text-center text-xs text-slate-500">
-          Campus Grievance Addressal System (CGAS) &bull; CS1207 OOP Lab Group II-8
+          Campus Grievance Addressal System (CGAS) &bull; NIT Warangal &bull; CS1207 OOP Lab Group II-8
         </footer>
       </div>
     </AuthProvider>

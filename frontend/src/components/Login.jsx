@@ -53,11 +53,13 @@ export default function Login() {
         {/* Top Header */}
         <div className="bg-slate-900 text-white p-6 sm:p-8 text-center relative overflow-hidden">
           <div className="absolute -top-12 -right-12 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl"></div>
-          <div className="w-12 h-12 rounded-xl bg-teal-500 text-slate-950 font-black flex items-center justify-center text-xl mx-auto mb-3 shadow-md">
-            CG
-          </div>
+          <img
+            src="/logo.png"
+            alt="NIT Warangal Logo"
+            className="w-16 h-16 rounded-2xl object-contain bg-white p-1 mx-auto mb-3 shadow-lg border border-slate-700"
+          />
           <h2 className="text-xl font-bold tracking-tight">Campus Grievance Addressal</h2>
-          <p className="text-xs text-slate-400 mt-1">Single digital portal for all campus facilities</p>
+          <p className="text-xs text-slate-400 mt-1">National Institute of Technology Warangal</p>
         </div>
 
         {/* Form Container */}
