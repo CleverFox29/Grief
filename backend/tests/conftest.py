@@ -12,6 +12,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from app.database import get_db
+from app.config import settings
+import os
+os.environ["AUTO_SEED"] = "false"
+settings.AUTO_SEED = False
 from app.main import app
 from app.models import Category, StaffRecord, Student, Admin, UserRole, Ticket
 from app.core.security import hash_password

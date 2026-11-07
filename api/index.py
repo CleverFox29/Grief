@@ -17,7 +17,8 @@ from app.main import app as fastapi_app
 # Ensure database is connected on cold start
 try:
     connect_db()
-    if os.getenv("AUTO_SEED", "false").lower() in ("true", "1"):
+    from app.config import settings
+    if settings.AUTO_SEED:
         from app.models import Category
         from app.seed import seed_database
         if Category.objects.count() == 0:
