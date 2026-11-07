@@ -15,46 +15,75 @@ class EmbeddingProvider:
     """Calls Gemini embeddings when configured; lexical matching is the fallback."""
     _client = None
     _lock = threading.Lock()
+    _category_vectors: Dict[str, List[float]] = {}
 
     @classmethod
     def suggest_category(cls, description: str, categories: List[Any]) -> Optional[Dict[str, Any]]:
-        """Ask Gemini to choose the best existing category; never invent a category."""
+        """Choose the closest category using cached Gemini semantic embeddings."""
         if len(categories) < 2:
             return None
-        def lexical_fallback() -> Optional[Dict[str, Any]]:
-            ranked = sorted(
-                ((fuzz.token_set_ratio(description, f"{c.name} {c.description or ''}"), c) for c in categories),
-                key=lambda item: item[0], reverse=True,
-            )
-            if ranked and ranked[0][0] >= 25:
-                return {"id": ranked[0][1].id, "name": ranked[0][1].name}
-            return None
         if not settings.GEMINI_API_KEY:
-            return lexical_fallback()
+            return None
+        try:
+            examples = {
+                "plumbing": "water cooler, drinking water dispenser, tap, pipe, leak, drain, flush",
+                "electrical": "fan, light, power, switch, socket, wiring, motor, appliance not turning on",
+                "carpentry": "chair, table, door, cupboard, bed, wood, broken furniture",
+                "masonry": "wall, floor, tile, ceiling, plaster, crack, seepage",
+                "administrative": "ID card, allotment, fee, records, office, paperwork",
+                "security": "theft, safety, lost item, harassment, gate, guard",
+            }
+            category_texts = {}
+            for category in categories:
+                key = category.name.lower()
+                hints = next((value for name, value in examples.items() if name in key), "")
+                profile = f"{category.name}. {category.description or ''} Related issues include: {hints}."
+                category_texts[f"{category.id}:{profile}"] = category
+            missing = [text for text in category_texts if text not in cls._category_vectors]
+            if missing:
+                vectors = cls.encode_many(missing)
+                if not vectors:
+                    return None
+                cls._category_vectors.update(dict(zip(missing, vectors)))
+            query_vector = cls.encode(description[:1200])
+            if not query_vector:
+                return None
+            ranked = []
+            for text, category in category_texts.items():
+                vector = cls._category_vectors.get(text)
+                if vector and len(vector) == len(query_vector):
+                    ranked.append((sum(a * b for a, b in zip(query_vector, vector)), category))
+            if not ranked:
+                return None
+            _, selected = max(ranked, key=lambda item: item[0])
+            return {"id": selected.id, "name": selected.name}
+        except Exception:
+            logging.warning("Gemini embedding category match failed", exc_info=True)
+            return None
+
+    @classmethod
+    def encode_many(cls, texts: List[str]) -> Optional[List[List[float]]]:
+        if not texts or not settings.GEMINI_API_KEY:
+            return None
         try:
             if cls._client is None:
                 with cls._lock:
                     if cls._client is None:
                         from google import genai
                         cls._client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            options = "\n".join(
-                f"{category.id}: {category.name} — {category.description or 'No details provided'}"
-                for category in categories
-            )
-            response = cls._client.models.generate_content(
-                model=settings.GEMINI_CLASSIFICATION_MODEL,
-                contents=(
-                    "Choose the single best matching category for this campus issue. "
-                    "Return only its numeric ID, or 0 if unclear.\n"
-                    f"Categories:\n{options}\nIssue: {description[:1200]}"
+            from google.genai import types
+            result = cls._client.models.embed_content(
+                model=settings.GEMINI_EMBEDDING_MODEL,
+                contents=texts,
+                config=types.EmbedContentConfig(
+                    task_type="SEMANTIC_SIMILARITY",
+                    output_dimensionality=settings.GEMINI_EMBEDDING_DIMENSIONS,
                 ),
             )
-            category_id = int((response.text or "").strip())
-            chosen = next((c for c in categories if c.id == category_id), None)
-            return {"id": chosen.id, "name": chosen.name} if chosen else None
+            return [list(item.values) for item in result.embeddings]
         except Exception:
-            logging.warning("Gemini category suggestion failed; using local category matching")
-            return lexical_fallback()
+            logging.warning("Gemini category embedding request failed", exc_info=True)
+            return None
 
     @classmethod
     def encode(cls, text: str) -> Optional[List[float]]:
@@ -122,16 +151,17 @@ class DeduplicationEngine:
 
     @classmethod
     def _score(cls, location: str, description: str, ticket: Ticket, query_vector: Optional[List[float]]) -> Dict[str, float]:
-        location_score = float(fuzz.token_set_ratio(location.lower(), ticket.location.lower()))
+        has_location = bool(location and location.strip())
+        location_score = float(fuzz.token_set_ratio(location.lower(), ticket.location.lower())) if has_location else 0.0
         lexical_score = float(fuzz.token_set_ratio(description.lower(), ticket.description.lower()))
         lexical_score = 0.7 * lexical_score + 0.3 * float(fuzz.partial_ratio(description.lower(), ticket.description.lower()))
 
         left, right = cls._location_parts(location), cls._location_parts(ticket.location)
         room_conflict = left["room"] and right["room"] and left["room"].replace(" ", "") != right["room"].replace(" ", "")
         block_conflict = left["block"] and right["block"] and left["block"] != right["block"]
-        if room_conflict:
+        if has_location and room_conflict:
             location_score *= 0.3
-        elif block_conflict:
+        elif has_location and block_conflict:
             location_score *= 0.55
 
         semantic_score = lexical_score
@@ -140,11 +170,13 @@ class DeduplicationEngine:
             cosine = sum(a * b for a, b in zip(query_vector, stored))
             semantic_score = max(0.0, min(100.0, cosine * 100.0))
 
-        if query_vector and stored:
+        if not has_location:
+            overall = semantic_score * 0.65 + lexical_score * 0.35 if query_vector and stored else lexical_score
+        elif query_vector and stored:
             overall = location_score * 0.35 + lexical_score * 0.25 + semantic_score * 0.40
         else:
             overall = location_score * 0.45 + lexical_score * 0.55
-        if room_conflict:
+        if has_location and room_conflict:
             overall *= 0.30
         return {"location": location_score, "lexical": lexical_score, "semantic": semantic_score, "overall": overall}
 

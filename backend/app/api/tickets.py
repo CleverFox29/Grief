@@ -121,7 +121,7 @@ def check_ticket_duplicates(
 @router.get("/tickets/suggestions", response_model=DuplicateCheckResponse)
 def suggest_ticket_duplicates(
     category_id: int = Query(..., gt=0),
-    location: str = Query(..., min_length=2, max_length=150),
+    location: str = Query("", max_length=150),
     query: str = Query(..., min_length=1, max_length=1000),
     current_user: User = Depends(require_student),
     db = Depends(get_db),

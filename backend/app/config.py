@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
     GEMINI_EMBEDDING_DIMENSIONS: int = 768
-    GEMINI_CLASSIFICATION_MODEL: str = "gemini-3.8-flash"
     DATABASE_URL: Optional[str] = None
     
     # Security
