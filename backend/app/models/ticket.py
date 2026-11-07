@@ -9,7 +9,9 @@ from mongoengine import (
     IntField,
     BooleanField,
     DateTimeField,
-    SequenceField
+    SequenceField,
+    ListField,
+    FloatField
 )
 from app.models.base import TimestampMixin, utc_now
 from app.models.enums import TicketStatus
@@ -48,6 +50,7 @@ class Ticket(Document, TimestampMixin):
     
     location = StringField(required=True, max_length=150)
     description = StringField(required=True)
+    description_embedding = ListField(FloatField(), default=list)
     photo_url = StringField(max_length=255, null=True)
     is_confidential = BooleanField(default=False, required=True)
     status = StringField(default=TicketStatus.OPEN.value, required=True, max_length=30)

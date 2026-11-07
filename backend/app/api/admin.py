@@ -22,8 +22,19 @@ from app.schemas.admin import (
 )
 from app.schemas.ticket import CategoryResponse, StaffResponse
 from app.services.admin_service import AdminService
+from app.services.deduplication_service import EmbeddingProvider
 
 router = APIRouter(prefix="/admin", tags=["Admin Master Data & Reports"])
+
+
+@router.post("/tickets/backfill-embeddings")
+def backfill_ticket_embeddings(
+    limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(require_admin),
+    db = Depends(get_db),
+):
+    """Admin-only bounded backfill for older ticket records missing Gemini vectors."""
+    return EmbeddingProvider.backfill_missing(limit=limit)
 
 # ------------------ Student Management (F14, U8) ------------------
 

@@ -3,6 +3,35 @@
 import io
 import pytest
 from app.models import Category, Student, Admin, Ticket, TicketStatus, UserRole
+from app.services.deduplication_service import DeduplicationEngine
+
+
+def test_location_room_conflict_penalizes_match():
+    ticket = Ticket(location="Hostel 3, Room 101", description="water cooler not chilling")
+    score = DeduplicationEngine._score("Hostel 3, Room 405", "water cooler not chilling", ticket, None)
+    assert score["overall"] < 25
+
+
+def test_same_room_and_paraphrased_issue_ranks_as_possible_match():
+    ticket = Ticket(location="Hostel 3, Room 204", description="water tap is leaking continuously")
+    score = DeduplicationEngine._score("Hostel 3 Room 204", "tap leaking water", ticket, None)
+    assert score["overall"] >= 52
+
+
+def test_live_suggestions_endpoint_returns_matches(client, db_session, student_auth_header, seeded_categories, monkeypatch):
+    monkeypatch.setattr("app.services.deduplication_service.EmbeddingProvider.encode", lambda _text: None)
+    student = db_session.query(Student).filter_by(user_id="25CSB0A22").first()
+    ticket = Ticket(ticket_id="TKT-LIVE-1", student_id=student.id,
+                    category_id=seeded_categories["Plumbing"], location="Hostel 3 Room 204",
+                    description="Water tap is leaking continuously", status=TicketStatus.OPEN.value)
+    db_session.add(ticket)
+    db_session.commit()
+    response = client.get("/api/tickets/suggestions", headers=student_auth_header, params={
+        "category_id": seeded_categories["Plumbing"], "location": "Hostel 3 Room 204",
+        "query": "water tap leaking"
+    })
+    assert response.status_code == 200
+    assert response.json()["matches"][0]["ticket_id"] == "TKT-LIVE-1"
 
 @pytest.fixture
 def student_auth_header(client, db_session):
@@ -49,7 +78,8 @@ def test_get_active_categories(client, seeded_categories):
     assert "Plumbing" in names
     assert "Electrical" in names
 
-def test_deduplication_engine_detects_match(client, db_session, student_auth_header, seeded_categories):
+def test_deduplication_engine_detects_match(client, db_session, student_auth_header, seeded_categories, monkeypatch):
+    monkeypatch.setattr("app.services.deduplication_service.EmbeddingProvider.encode", lambda _text: None)
     """F6: Deduplication check warns student of possible duplicate open ticket."""
     cat_id = seeded_categories["Plumbing"]
     student = db_session.query(Student).filter_by(user_id="25CSB0A22").first()

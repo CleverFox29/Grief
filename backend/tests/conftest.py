@@ -14,6 +14,13 @@ sys.path.insert(0, str(BASE_DIR))
 from app.database import get_db
 from app.main import app
 from app.models import Category, StaffRecord, Student, Admin, UserRole, Ticket
+from app.services.deduplication_service import EmbeddingProvider
+
+
+@pytest.fixture(autouse=True)
+def disable_external_embeddings(monkeypatch):
+    """Tests never call Gemini or consume API quota."""
+    monkeypatch.setattr(EmbeddingProvider, "encode", classmethod(lambda cls, _text: None))
 from app.core.security import hash_password
 
 class QueryAdapter:
