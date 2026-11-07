@@ -69,12 +69,17 @@ export function AuthProvider({ children }) {
         }),
       });
 
+      const responseText = await response.text();
       let data = {};
       try {
-        data = await response.json();
+        data = responseText ? JSON.parse(responseText) : {};
       } catch (jsonErr) {
         if (!response.ok) {
-          throw new Error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:8000.');
+          const preview = responseText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+          throw new Error(
+            `Backend Error (HTTP ${response.status}${response.statusText ? ' ' + response.statusText : ''}): ` +
+            (preview || 'Server returned a non-JSON response. Check Vercel function logs.')
+          );
         }
       }
 
