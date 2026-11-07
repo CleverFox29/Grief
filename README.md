@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC.svg)](https://tailwindcss.com/)
-[![PyTest](https://img.shields.io/badge/PyTest-45%20Passed-brightgreen.svg)](https://pytest.org/)
+[![PyTest](https://img.shields.io/badge/PyTest-53%20Passed-brightgreen.svg)](https://pytest.org/)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-informational.svg)](https://github.com/)
 
 > **Course**: CS1207 Object Oriented Programming Lab &bull; Version 1.0  
@@ -305,6 +305,12 @@ Pre-seeded accounts are provided for immediate evaluation. The web login interfa
 |---|---|---|---|
 | **Student** | `25CSB0A22` | `Student@123` | Soham Siddhartha Roy &bull; Hostel 3, Room 204 |
 | **Administrator** | `admin01` | `Admin@123` | Chief Administrator &bull; Campus Facilities Dept |
+| **Serviceman (Carpentry)** | `service_carpenter` | `Serviceman@123` | Manoj Sharma &bull; Carpentry Specialist |
+| **Serviceman (Admin)** | `service_admin` | `Serviceman@123` | Anita Desai &bull; Administrative Specialist |
+| **Serviceman (Plumbing)** | `service_plumber` | `Serviceman@123` | Rajesh Kumar &bull; Plumbing Specialist |
+| **Serviceman (Electrical)** | `service_electrician` | `Serviceman@123` | Sunil Verma &bull; Electrical Specialist |
+| **Serviceman (Masonry)** | `service_mason` | `Serviceman@123` | Vikram Singh &bull; Masonry Specialist |
+| **Serviceman (Security)** | `service_security` | `Serviceman@123` | Devendra Pal &bull; Campus Security Chief |
 
 > [!TIP]
 > **Password Reset Demonstration**: When using the "Forgot Password" feature, the system generates a 6-digit OTP valid for 5 minutes. In development mode, the OTP is displayed directly in the user notification toast for convenient evaluation.
@@ -424,16 +430,18 @@ cd backend
 | [`test_tracking_and_queue.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_tracking_and_queue.py) | 4 | Student tracking (F8), unified queue filtering (F9, F10), staff assignments (F11) |
 | [`test_feedback_reopen.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_feedback_reopen.py) | 5 | 1–5 star rating validation (F13), 7-day reopen window, student authorization checks |
 | [`test_admin_records.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_admin_records.py) | 6 | Single student CRUD, bulk CSV import (F14), category safety rules, CSV reports (F15) |
+| [`test_serviceman.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_serviceman.py) | 8 | Serviceman role, active workload counts, IN_PROGRESS resolution lock, CSV import |
 | [`test_security_performance.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_security_performance.py) | 4 | SQL injection defense, confidential ticket privacy, $< 2$s deduplication benchmark |
 | [`test_cross_platform.py`](file:///home/soham-roy/Documents/code/web/Grief/backend/tests/test_cross_platform.py) | 4 | Windows & Linux compatibility (NFR 5), MongoDB URI format, CRLF/LF line-endings |
-| **Total** | **45** | **100% Passing Test Suite** |
+| **Total** | **53** | **100% Passing Test Suite** |
 
 ---
 
 ## 9. CSV Import Template Specification
 
-The system accepts standard comma-separated text files (`.csv`) with UTF-8 encoding. A sample file [`sample_students.csv`](file:///home/soham-roy/Documents/code/web/Grief/sample_students.csv) is included in the project root:
+The system accepts standard comma-separated text files (`.csv`) with UTF-8 encoding for both Students and Servicemen.
 
+### Student Import Template ([`sample_students.csv`](file:///home/soham-roy/Documents/code/web/Grief/sample_students.csv))
 ```csv
 user_id,name,email,hostel_room,phone
 25CSB0A12,Jibendra Kumar Garai,jibendra.garai@campus.edu,Hostel 3 - Room 201,+91-9876500012
@@ -441,6 +449,17 @@ user_id,name,email,hostel_room,phone
 25CSB0A75,Aniket Rajesh Borkar,aniket.borkar@campus.edu,Hostel 3 - Room 203,+91-9876500075
 25CSB0A80,Priya Sharma,priya.sharma@campus.edu,Hostel 1 - Room 105,+91-9876500080
 25CSB0A81,Rahul Mehta,rahul.mehta@campus.edu,Hostel 2 - Room 310,+91-9876500081
+```
+
+### Serviceman Import Template ([`sample_servicemen.csv`](file:///home/soham-roy/Documents/code/web/Grief/sample_servicemen.csv))
+```csv
+user_id,name,email,category,phone,password
+service_carpenter2,Ramesh Woodcraft,ramesh.wood@campus.edu,Carpentry,+91-9876543210,Serviceman@123
+service_plumber2,Suresh Jal,suresh.jal@campus.edu,Plumbing,+91-9876543211,Serviceman@123
+service_electrician2,Kishore Wire,kishore.wire@campus.edu,Electrical,+91-9876543212,Serviceman@123
+service_mason2,Gopal Builders,gopal.mason@campus.edu,Masonry,+91-9876543213,Serviceman@123
+service_admin2,Sunita Gupta,sunita.admin@campus.edu,Administrative,+91-9876543214,Serviceman@123
+service_security2,Balraj Singh,balraj.guard@campus.edu,Security,+91-9876543215,Serviceman@123
 ```
 
 ### Column Requirements

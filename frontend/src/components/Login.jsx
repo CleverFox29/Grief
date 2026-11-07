@@ -30,7 +30,7 @@ export default function Login() {
     }
   };
 
-  const fillDemoAccount = (demoRole) => {
+  const fillDemoAccount = (demoRole, specificUserId = null) => {
     setRole(demoRole);
     setErrorMsg(null);
     setIsLocked(false);
@@ -38,7 +38,7 @@ export default function Login() {
       setUserId('25CSB0A22');
       setPassword('Student@123');
     } else if (demoRole === 'SERVICEMAN') {
-      setUserId('service_carpenter');
+      setUserId(specificUserId || 'service_carpenter');
       setPassword('Serviceman@123');
     } else {
       setUserId('admin01');
@@ -214,7 +214,7 @@ export default function Login() {
               </button>
               <button
                 type="button"
-                onClick={() => fillDemoAccount('SERVICEMAN')}
+                onClick={() => fillDemoAccount('SERVICEMAN', 'service_carpenter')}
                 className="text-[10px] sm:text-[11px] font-medium py-1.5 px-1 sm:px-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 transition-colors text-center"
               >
                 Serviceman (Manoj)
@@ -227,6 +227,34 @@ export default function Login() {
                 Admin (Admin01)
               </button>
             </div>
+            {role === 'SERVICEMAN' && (
+              <div className="mt-2.5 flex items-center justify-center space-x-2 text-[10px] text-slate-500">
+                <span className="font-semibold text-slate-400">Trade:</span>
+                <button
+                  type="button"
+                  onClick={() => fillDemoAccount('SERVICEMAN', 'service_carpenter')}
+                  className="underline hover:text-blue-600 text-slate-600"
+                >
+                  Manoj (Carpentry)
+                </button>
+                <span>&bull;</span>
+                <button
+                  type="button"
+                  onClick={() => fillDemoAccount('SERVICEMAN', 'service_admin')}
+                  className="underline hover:text-blue-600 text-slate-600"
+                >
+                  Anita (Admin)
+                </button>
+                <span>&bull;</span>
+                <button
+                  type="button"
+                  onClick={() => fillDemoAccount('SERVICEMAN', 'service_plumber')}
+                  className="underline hover:text-blue-600 text-slate-600"
+                >
+                  Rajesh (Plumbing)
+                </button>
+              </div>
+            )}
           </div>
 
         </div>

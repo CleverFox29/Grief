@@ -23,15 +23,50 @@ export default function AdminRecordsManagement() {
   // Data states
   const [students, setStudents] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [servicemen, setServicemen] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState(null);
 
   // Modals
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [studentModalError, setStudentModalError] = useState(null);
+  const [studentSubmitting, setStudentSubmitting] = useState(false);
+
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
+  const [staffModalError, setStaffModalError] = useState(null);
+  const [staffSubmitting, setStaffSubmitting] = useState(false);
+
+  const [isAddServicemanOpen, setIsAddServicemanOpen] = useState(false);
+  const [smModalError, setSmModalError] = useState(null);
+  const [smSubmitting, setSmSubmitting] = useState(false);
+
+  const [isServicemanCsvModalOpen, setIsServicemanCsvModalOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
+  const [categoryModalError, setCategoryModalError] = useState(null);
+  const [categorySubmitting, setCategorySubmitting] = useState(false);
+
+  // Helper for parsing backend error details cleanly
+  const extractErrorMessage = (data, defaultMsg) => {
+    if (!data) return defaultMsg;
+    if (typeof data === 'string') return data;
+    if (data.detail) {
+      if (typeof data.detail === 'string') return data.detail;
+      if (Array.isArray(data.detail)) {
+        return data.detail.map(d => {
+          const field = d.loc && Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : '';
+          const msg = d.msg || 'Invalid input';
+          return field ? `${field}: ${msg}` : msg;
+        }).join('; ');
+      }
+      if (typeof data.detail === 'object') {
+        return JSON.stringify(data.detail);
+      }
+    }
+    if (data.message && typeof data.message === 'string') return data.message;
+    return defaultMsg;
+  };
 
   // Form states
   const [studentForm, setStudentForm] = useState({
@@ -41,6 +76,15 @@ export default function AdminRecordsManagement() {
     phone: '',
     password: 'Student@123',
     hostel_room: ''
+  });
+
+  const [servicemanForm, setServicemanForm] = useState({
+    user_id: '',
+    name: '',
+    email: '',
+    category: '',
+    phone: '',
+    password: 'Serviceman@123'
   });
 
   const [staffForm, setStaffForm] = useState({
@@ -57,6 +101,8 @@ export default function AdminRecordsManagement() {
 
   const [csvFile, setCsvFile] = useState(null);
   const [csvResult, setCsvResult] = useState(null);
+  const [smCsvFile, setSmCsvFile] = useState(null);
+  const [smCsvResult, setSmCsvResult] = useState(null);
 
   // Loaders
   const loadStudents = () => {
@@ -64,6 +110,15 @@ export default function AdminRecordsManagement() {
     fetch('/api/admin/students', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => setStudents(data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  const loadServicemen = () => {
+    setLoading(true);
+    fetch('/api/admin/servicemen', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setServicemen(Array.isArray(data) ? data : []))
       .catch(console.error)
       .finally(() => setLoading(false));
   };
@@ -81,7 +136,12 @@ export default function AdminRecordsManagement() {
     setLoading(true);
     fetch('/api/categories', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.json())
-      .then(data => setCategories(data))
+      .then(data => {
+        setCategories(data);
+        if (data.length > 0 && !servicemanForm.category) {
+          setServicemanForm(prev => ({ ...prev, category: data[0].name }));
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
@@ -89,6 +149,7 @@ export default function AdminRecordsManagement() {
   useEffect(() => {
     if (subTab === 'STUDENTS') loadStudents();
     else if (subTab === 'STAFF') {
+      loadServicemen();
       loadStaff();
       loadCategories();
     } else if (subTab === 'CATEGORIES') loadCategories();
@@ -97,7 +158,8 @@ export default function AdminRecordsManagement() {
   // Handlers
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    setNotification(null);
+    setStudentModalError(null);
+    setStudentSubmitting(true);
     try {
       const resp = await fetch('/api/admin/students', {
         method: 'POST',
@@ -105,17 +167,30 @@ export default function AdminRecordsManagement() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(studentForm)
+        body: JSON.stringify({
+          user_id: studentForm.user_id.trim(),
+          name: studentForm.name.trim(),
+          email: studentForm.email.trim(),
+          phone: studentForm.phone?.trim() ? studentForm.phone.trim() : null,
+          password: studentForm.password || 'Student@123',
+          hostel_room: studentForm.hostel_room?.trim() ? studentForm.hostel_room.trim() : null,
+          enrollment_no: studentForm.user_id.trim()
+        })
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'Failed to add student.');
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(extractErrorMessage(data, 'Failed to add student.'));
+      }
 
       setNotification({ type: 'success', message: `Student ${data.name} (${data.user_id}) added successfully.` });
       setIsAddStudentOpen(false);
+      setStudentModalError(null);
       setStudentForm({ user_id: '', name: '', email: '', phone: '', password: 'Student@123', hostel_room: '' });
       loadStudents();
     } catch (err) {
-      setNotification({ type: 'error', message: err.message });
+      setStudentModalError(err.message || 'An unexpected error occurred while adding student.');
+    } finally {
+      setStudentSubmitting(false);
     }
   };
 
@@ -146,9 +221,79 @@ export default function AdminRecordsManagement() {
     }
   };
 
+  const handleAddServiceman = async (e) => {
+    e.preventDefault();
+    setSmModalError(null);
+    setSmSubmitting(true);
+    try {
+      if (!servicemanForm.category || !servicemanForm.category.trim()) {
+        throw new Error('Please select a valid trade / category division.');
+      }
+      const resp = await fetch('/api/admin/servicemen', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          user_id: servicemanForm.user_id.trim(),
+          name: servicemanForm.name.trim(),
+          email: servicemanForm.email.trim(),
+          category: servicemanForm.category.trim(),
+          phone: servicemanForm.phone?.trim() ? servicemanForm.phone.trim() : null,
+          password: servicemanForm.password || 'Serviceman@123'
+        })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(extractErrorMessage(data, 'Failed to add serviceman.'));
+      }
+
+      setNotification({ type: 'success', message: `Serviceman ${data.name} (${data.category}) created successfully.` });
+      setIsAddServicemanOpen(false);
+      setSmModalError(null);
+      setServicemanForm({ user_id: '', name: '', email: '', category: categories[0]?.name || '', phone: '', password: 'Serviceman@123' });
+      loadServicemen();
+      loadStaff();
+    } catch (err) {
+      setSmModalError(err.message || 'An unexpected error occurred while adding serviceman.');
+    } finally {
+      setSmSubmitting(false);
+    }
+  };
+
+  const handleServicemanCsvImport = async (e) => {
+    e.preventDefault();
+    if (!smCsvFile) return;
+
+    setLoading(true);
+    setNotification(null);
+    const formData = new FormData();
+    formData.append('file', smCsvFile);
+
+    try {
+      const resp = await fetch('/api/admin/servicemen/import-csv', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Serviceman CSV import failed.');
+
+      setSmCsvResult(data);
+      loadServicemen();
+      loadStaff();
+    } catch (err) {
+      setNotification({ type: 'error', message: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAddStaff = async (e) => {
     e.preventDefault();
-    setNotification(null);
+    setStaffModalError(null);
+    setStaffSubmitting(true);
     try {
       const resp = await fetch('/api/admin/staff', {
         method: 'POST',
@@ -157,27 +302,31 @@ export default function AdminRecordsManagement() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          name: staffForm.name,
-          contact: staffForm.contact,
+          name: staffForm.name.trim(),
+          contact: staffForm.contact.trim(),
           category_id: staffForm.category_id ? parseInt(staffForm.category_id) : null,
-          notes: staffForm.notes
+          notes: staffForm.notes?.trim() || null
         })
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'Failed to add staff record.');
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(extractErrorMessage(data, 'Failed to add staff record.'));
 
       setNotification({ type: 'success', message: `Staff member ${data.name} added.` });
       setIsAddStaffOpen(false);
+      setStaffModalError(null);
       setStaffForm({ name: '', contact: '', category_id: '', notes: '' });
       loadStaff();
     } catch (err) {
-      setNotification({ type: 'error', message: err.message });
+      setStaffModalError(err.message || 'Failed to add staff record.');
+    } finally {
+      setStaffSubmitting(false);
     }
   };
 
   const handleAddCategory = async (e) => {
     e.preventDefault();
-    setNotification(null);
+    setCategoryModalError(null);
+    setCategorySubmitting(true);
     try {
       const resp = await fetch('/api/admin/categories', {
         method: 'POST',
@@ -185,17 +334,23 @@ export default function AdminRecordsManagement() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(categoryForm)
+        body: JSON.stringify({
+          name: categoryForm.name.trim(),
+          description: categoryForm.description.trim()
+        })
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'Failed to add category.');
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(extractErrorMessage(data, 'Failed to add category.'));
 
       setNotification({ type: 'success', message: `Category '${data.name}' created.` });
       setIsAddCategoryOpen(false);
+      setCategoryModalError(null);
       setCategoryForm({ name: '', description: '' });
       loadCategories();
     } catch (err) {
-      setNotification({ type: 'error', message: err.message });
+      setCategoryModalError(err.message || 'Failed to add category.');
+    } finally {
+      setCategorySubmitting(false);
     }
   };
 
@@ -244,7 +399,7 @@ export default function AdminRecordsManagement() {
             }`}
           >
             <HardHat className="w-4 h-4" />
-            <span>Staff Roster (F14)</span>
+            <span>Servicemen Roster (F14)</span>
           </button>
 
           <button
@@ -277,7 +432,10 @@ export default function AdminRecordsManagement() {
               </button>
 
               <button
-                onClick={() => setIsAddStudentOpen(true)}
+                onClick={() => {
+                  setStudentModalError(null);
+                  setIsAddStudentOpen(true);
+                }}
                 className="inline-flex items-center space-x-1.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white px-3.5 py-2 rounded-xl shadow-sm transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -287,18 +445,41 @@ export default function AdminRecordsManagement() {
           )}
 
           {subTab === 'STAFF' && (
-            <button
-              onClick={() => setIsAddStaffOpen(true)}
-              className="inline-flex items-center space-x-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 rounded-xl shadow-sm transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Staff Record</span>
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  setSmCsvResult(null);
+                  setSmCsvFile(null);
+                  setIsServicemanCsvModalOpen(true);
+                }}
+                className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl shadow-sm transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5 text-blue-600" />
+                <span>Upload Servicemen CSV</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setSmModalError(null);
+                  if (categories.length > 0 && !servicemanForm.category) {
+                    setServicemanForm(prev => ({ ...prev, category: categories[0].name }));
+                  }
+                  setIsAddServicemanOpen(true);
+                }}
+                className="inline-flex items-center space-x-1.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white px-3.5 py-2 rounded-xl shadow-sm transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Serviceman</span>
+              </button>
+            </>
           )}
 
           {subTab === 'CATEGORIES' && (
             <button
-              onClick={() => setIsAddCategoryOpen(true)}
+              onClick={() => {
+                setCategoryModalError(null);
+                setIsAddCategoryOpen(true);
+              }}
               className="inline-flex items-center space-x-1.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white px-3.5 py-2 rounded-xl shadow-sm transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -359,43 +540,63 @@ export default function AdminRecordsManagement() {
         </div>
       )}
 
-      {/* SUB-TAB 2: STAFF ROSTER */}
+      {/* SUB-TAB 2: SERVICEMEN & STAFF ROSTER */}
       {subTab === 'STAFF' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center text-xs text-slate-600">
-            <span>Maintenance & Admin Personnel ({staff.length})</span>
-            <span className="text-[11px] text-slate-400">Held as database records (do not log in)</span>
+            <span>Maintenance & Servicemen Personnel ({servicemen.length})</span>
+            <span className="text-[11px] text-teal-700 font-semibold">Active accounts with triage & resolution permissions</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100 text-slate-600 uppercase font-semibold border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Contact Number</th>
+                  <th className="px-4 py-3">Serviceman</th>
                   <th className="px-4 py-3">Trade / Category</th>
-                  <th className="px-4 py-3">Notes</th>
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Contact</th>
+                  <th className="px-4 py-3">Campus Email</th>
+                  <th className="px-4 py-3">Active Assigned</th>
+                  <th className="px-4 py-3">Account Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
-                {staff.map(w => (
-                  <tr key={w.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-bold text-slate-900">{w.name}</td>
-                    <td className="px-4 py-3 font-mono text-slate-700">{w.contact}</td>
+                {servicemen.map(sm => (
+                  <tr key={sm.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <div className="font-bold text-slate-900">{sm.name}</div>
+                      <div className="font-mono text-[11px] text-slate-400">ID: {sm.user_id}</div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="bg-teal-50 text-teal-800 border border-teal-200 px-2.5 py-0.5 rounded-full font-semibold text-[10px]">
-                        {w.category_name || 'General Maintenance'}
+                        {sm.category}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500">{w.notes || '-'}</td>
+                    <td className="px-4 py-3 font-mono text-slate-700">{sm.phone || 'N/A'}</td>
+                    <td className="px-4 py-3 text-slate-600">{sm.email}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                        sm.active_tickets_count > 0 
+                          ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                          : 'bg-slate-50 text-slate-600 border-slate-200'
+                      }`}>
+                        {sm.active_tickets_count ?? 0} active
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-semibold text-[10px]">
-                        Active
+                        Active Portal User
                       </span>
                     </td>
                   </tr>
                 ))}
+                {servicemen.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="text-center py-8 text-slate-400">
+                      No servicemen found. Click "Add Serviceman" or "Upload Servicemen CSV" to add.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -436,10 +637,24 @@ export default function AdminRecordsManagement() {
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
               <h3 className="font-bold text-sm">Add New Student Record</h3>
-              <button onClick={() => setIsAddStudentOpen(false)} className="text-slate-400 hover:text-white">
+              <button 
+                onClick={() => { setIsAddStudentOpen(false); setStudentModalError(null); }} 
+                className="text-slate-400 hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {studentModalError && (
+              <div className="mx-6 mt-4 p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs flex items-start space-x-2.5 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold text-rose-900 mb-0.5">Failed to add student</div>
+                  <div className="text-rose-700 font-medium leading-relaxed">{studentModalError}</div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleAddStudent} className="p-6 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Student Enrollment ID *</label>
@@ -449,7 +664,7 @@ export default function AdminRecordsManagement() {
                   value={studentForm.user_id}
                   onChange={e => setStudentForm({ ...studentForm, user_id: e.target.value })}
                   placeholder="e.g. 25CSB0A99"
-                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono"
                 />
               </div>
               <div>
@@ -497,16 +712,24 @@ export default function AdminRecordsManagement() {
               <div className="flex justify-end space-x-2 pt-3">
                 <button
                   type="button"
-                  onClick={() => setIsAddStudentOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+                  onClick={() => { setIsAddStudentOpen(false); setStudentModalError(null); }}
+                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow"
+                  disabled={studentSubmitting}
+                  className="px-5 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow disabled:opacity-50 flex items-center space-x-1.5 transition-all"
                 >
-                  Save Student
+                  {studentSubmitting ? (
+                    <>
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving Student...</span>
+                    </>
+                  ) : (
+                    <span>Save Student</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -597,16 +820,236 @@ export default function AdminRecordsManagement() {
         </div>
       )}
 
+      {/* MODAL: BULK SERVICEMEN CSV IMPORT */}
+      {isServicemanCsvModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <h3 className="font-bold text-sm">Bulk Upload Servicemen Roster (CSV)</h3>
+              <button onClick={() => setIsServicemanCsvModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-slate-800">CSV Columns Format:</p>
+                  <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">sample_servicemen.csv</span>
+                </div>
+                <p className="text-slate-600 font-mono text-[11px] bg-white p-2 rounded border border-slate-200 overflow-x-auto whitespace-pre">
+                  user_id,name,email,category,phone,password{'\n'}
+                  service_admin2,Sunita Gupta,sunita.admin@campus.edu,Administrative,+91-9876543214,Serviceman@123{'\n'}
+                  service_plumber2,Suresh Jal,suresh.jal@campus.edu,Plumbing,+91-9876543211,Serviceman@123
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  &bull; Categories will match existing departments (Administrative, Plumbing, Carpentry, Electrical, Masonry, Security).
+                </p>
+              </div>
+
+              {smCsvResult ? (
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-xs space-y-2">
+                  <h4 className="font-bold text-teal-900 flex items-center space-x-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                    <span>{smCsvResult.message}</span>
+                  </h4>
+                  <p className="text-slate-700">Successfully Imported: <strong>{smCsvResult.successfully_imported}</strong></p>
+                  <p className="text-slate-700">Duplicates Skipped: <strong>{smCsvResult.duplicates_rejected}</strong></p>
+                  {smCsvResult.errors && smCsvResult.errors.length > 0 && (
+                    <div className="mt-2 text-[11px] text-amber-800 bg-amber-50 p-2 rounded border border-amber-200 max-h-24 overflow-y-auto">
+                      {smCsvResult.errors.map((err, i) => <p key={i}>&bull; {err}</p>)}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setIsServicemanCsvModalOpen(false)}
+                    className="mt-3 w-full py-2 bg-teal-600 text-white rounded-lg font-bold"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleServicemanCsvImport} className="space-y-4">
+                  <label className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-50 hover:bg-blue-50/20 transition-colors">
+                    <Upload className="w-8 h-8 text-slate-400 mb-2" />
+                    <span className="text-xs font-semibold text-slate-700">
+                      {smCsvFile ? smCsvFile.name : 'Select or drop Servicemen CSV file'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">UTF-8 .csv files only</span>
+                    <input
+                      type="file"
+                      accept=".csv, text/csv"
+                      onChange={e => setSmCsvFile(e.target.files[0])}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <div className="flex justify-end space-x-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsServicemanCsvModalOpen(false)}
+                      className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading || !smCsvFile}
+                      className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow disabled:opacity-50"
+                    >
+                      {loading ? 'Processing...' : 'Upload & Process Servicemen CSV'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD SERVICEMAN (MANUAL) */}
+      {isAddServicemanOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <h3 className="font-bold text-sm">Add New Serviceman Account</h3>
+              <button 
+                onClick={() => { setIsAddServicemanOpen(false); setSmModalError(null); }} 
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {smModalError && (
+              <div className="mx-6 mt-4 p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs flex items-start space-x-2.5 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold text-rose-900 mb-0.5">Failed to add serviceman</div>
+                  <div className="text-rose-700 font-medium leading-relaxed">{smModalError}</div>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleAddServiceman} className="p-6 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Serviceman User ID *</label>
+                <input
+                  type="text"
+                  required
+                  value={servicemanForm.user_id}
+                  onChange={e => setServicemanForm({ ...servicemanForm, user_id: e.target.value })}
+                  placeholder="e.g. service_admin02"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={servicemanForm.name}
+                  onChange={e => setServicemanForm({ ...servicemanForm, name: e.target.value })}
+                  placeholder="e.g. Sunita Gupta"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Campus Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={servicemanForm.email}
+                  onChange={e => setServicemanForm({ ...servicemanForm, email: e.target.value })}
+                  placeholder="e.g. sunita.admin@campus.edu"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Trade / Category Division *</label>
+                <select
+                  required
+                  value={servicemanForm.category}
+                  onChange={e => setServicemanForm({ ...servicemanForm, category: e.target.value })}
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                >
+                  <option value="">Select Division</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Contact Phone</label>
+                <input
+                  type="text"
+                  value={servicemanForm.phone}
+                  onChange={e => setServicemanForm({ ...servicemanForm, phone: e.target.value })}
+                  placeholder="e.g. +91-9876543214"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Initial Password</label>
+                <input
+                  type="password"
+                  value={servicemanForm.password}
+                  onChange={e => setServicemanForm({ ...servicemanForm, password: e.target.value })}
+                  placeholder="Defaults to Serviceman@123"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+              <div className="flex justify-end space-x-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => { setIsAddServicemanOpen(false); setSmModalError(null); }}
+                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={smSubmitting}
+                  className="px-5 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow disabled:opacity-50 flex items-center space-x-1.5 transition-all"
+                >
+                  {smSubmitting ? (
+                    <>
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving Serviceman...</span>
+                    </>
+                  ) : (
+                    <span>Save Serviceman</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: ADD STAFF */}
       {isAddStaffOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
               <h3 className="font-bold text-sm">Add Maintenance Staff Member</h3>
-              <button onClick={() => setIsAddStaffOpen(false)} className="text-slate-400 hover:text-white">
+              <button 
+                onClick={() => { setIsAddStaffOpen(false); setStaffModalError(null); }} 
+                className="text-slate-400 hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {staffModalError && (
+              <div className="mx-6 mt-4 p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs flex items-start space-x-2.5 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold text-rose-900 mb-0.5">Failed to add staff member</div>
+                  <div className="text-rose-700 font-medium leading-relaxed">{staffModalError}</div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleAddStaff} className="p-6 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
@@ -654,16 +1097,24 @@ export default function AdminRecordsManagement() {
               <div className="flex justify-end space-x-2 pt-3">
                 <button
                   type="button"
-                  onClick={() => setIsAddStaffOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+                  onClick={() => { setIsAddStaffOpen(false); setStaffModalError(null); }}
+                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow"
+                  disabled={staffSubmitting}
+                  className="px-5 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow disabled:opacity-50 flex items-center space-x-1.5 transition-all"
                 >
-                  Save Staff Member
+                  {staffSubmitting ? (
+                    <>
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving Staff...</span>
+                    </>
+                  ) : (
+                    <span>Save Staff Member</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -677,10 +1128,24 @@ export default function AdminRecordsManagement() {
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
               <h3 className="font-bold text-sm">Add Grievance Category</h3>
-              <button onClick={() => setIsAddCategoryOpen(false)} className="text-slate-400 hover:text-white">
+              <button 
+                onClick={() => { setIsAddCategoryOpen(false); setCategoryModalError(null); }} 
+                className="text-slate-400 hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {categoryModalError && (
+              <div className="mx-6 mt-4 p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs flex items-start space-x-2.5 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold text-rose-900 mb-0.5">Failed to add category</div>
+                  <div className="text-rose-700 font-medium leading-relaxed">{categoryModalError}</div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleAddCategory} className="p-6 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Category Name *</label>
@@ -706,16 +1171,24 @@ export default function AdminRecordsManagement() {
               <div className="flex justify-end space-x-2 pt-3">
                 <button
                   type="button"
-                  onClick={() => setIsAddCategoryOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+                  onClick={() => { setIsAddCategoryOpen(false); setCategoryModalError(null); }}
+                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow"
+                  disabled={categorySubmitting}
+                  className="px-5 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow disabled:opacity-50 flex items-center space-x-1.5 transition-all"
                 >
-                  Create Category
+                  {categorySubmitting ? (
+                    <>
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <span>Create Category</span>
+                  )}
                 </button>
               </div>
             </form>

@@ -32,7 +32,16 @@ export default function AdminUpdateTicketModal({ ticket, isOpen, onClose, onUpda
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.ok ? res.json() : [])
-        .then(data => setServicemenList(Array.isArray(data) ? data : []))
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) {
+            setServicemenList(data);
+          } else {
+            // Fallback to all active servicemen if no specialist matches
+            fetch('/api/servicemen', { headers: { 'Authorization': `Bearer ${token}` } })
+              .then(r => r.ok ? r.json() : [])
+              .then(allData => setServicemenList(Array.isArray(allData) ? allData : []));
+          }
+        })
         .catch(() => console.warn('Failed to fetch category servicemen'));
 
       // Also load legacy staff records as backup
@@ -162,13 +171,20 @@ export default function AdminUpdateTicketModal({ ticket, isOpen, onClose, onUpda
 
           {/* Serviceman Assignment (Category-matched) */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
-              <span className="flex items-center space-x-1.5">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-slate-700 flex items-center space-x-1.5">
                 <Wrench className="w-3.5 h-3.5 text-teal-600" />
                 <span>Assign {ticket.category_name} Serviceman</span>
-              </span>
-              <span className="text-[10px] text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full font-medium">Role-based</span>
-            </label>
+              </label>
+              {assignedServicemanId && (
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {(() => {
+                    const sm = servicemenList.find(s => s.id.toString() === assignedServicemanId.toString());
+                    return sm ? `(${sm.active_tickets_count ?? 0} jobs already assigned)` : null;
+                  })()}
+                </span>
+              )}
+            </div>
             <select
               value={assignedServicemanId}
               onChange={handleServicemanChange}
@@ -177,7 +193,7 @@ export default function AdminUpdateTicketModal({ ticket, isOpen, onClose, onUpda
               <option value="">-- Select Serviceman to Assign --</option>
               {servicemenList.map((sm) => (
                 <option key={sm.id} value={sm.id}>
-                  {sm.name} ({sm.category}) {sm.phone ? `• ${sm.phone}` : ''}
+                  {sm.name} ({sm.category}) — {sm.active_tickets_count ?? 0} jobs already assigned
                 </option>
               ))}
             </select>

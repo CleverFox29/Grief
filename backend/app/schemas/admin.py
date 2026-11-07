@@ -49,6 +49,14 @@ class StaffUpdateRequest(BaseModel):
     is_active: Optional[bool] = None
     notes: Optional[str] = None
 
+class ServicemanCreateRequest(BaseModel):
+    user_id: str = Field(..., min_length=2, max_length=50, description="Serviceman User ID")
+    name: str = Field(..., min_length=2, max_length=100)
+    email: EmailStr
+    category: str = Field(..., min_length=2, max_length=50, description="Trade/Category Name (e.g. Administrative, Carpentry)")
+    phone: Optional[str] = None
+    password: Optional[str] = Field("Serviceman@123", min_length=6, description="Initial account password")
+
 class CategoryCreateRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=50)
     description: Optional[str] = None

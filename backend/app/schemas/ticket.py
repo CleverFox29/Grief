@@ -35,6 +35,7 @@ class ServicemanResponse(BaseModel):
     phone: Optional[str] = None
     email: str
     is_active: bool = True
+    active_tickets_count: int = 0
 
     class Config:
         from_attributes = True

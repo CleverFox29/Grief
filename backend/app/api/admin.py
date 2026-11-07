@@ -8,19 +8,20 @@ from mongoengine import Q
 
 from app.database import get_db
 from app.core.deps import require_admin
-from app.models import User, Student, StaffRecord, Category
+from app.models import User, Student, StaffRecord, Category, Serviceman, Ticket, TicketStatus
 from app.schemas.admin import (
     StudentCreateRequest,
     StudentResponse,
     CSVImportResponse,
     StaffCreateRequest,
     StaffUpdateRequest,
+    ServicemanCreateRequest,
     CategoryCreateRequest,
     CategoryUpdateRequest,
     AuditLogResponse,
     ReportResponse
 )
-from app.schemas.ticket import CategoryResponse, StaffResponse
+from app.schemas.ticket import CategoryResponse, StaffResponse, ServicemanResponse
 from app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["Admin Master Data & Reports"])
@@ -112,6 +113,67 @@ def update_staff(
         is_active=staff.is_active,
         notes=staff.notes
     )
+
+
+# ------------------ Serviceman Management & CSV (F14) ------------------
+
+@router.get("/servicemen", response_model=List[ServicemanResponse])
+def get_admin_servicemen(
+    current_user: User = Depends(require_admin),
+    db = Depends(get_db)
+):
+    """Retrieve all servicemen with active task counts (Admin only)."""
+    servicemen = Serviceman.objects(is_active=True).order_by("+name")
+    unresolved_statuses = [
+        TicketStatus.OPEN.value,
+        TicketStatus.IN_PROGRESS.value,
+        TicketStatus.PENDING_CONFIRMATION.value
+    ]
+    result = []
+    for s in servicemen:
+        active_count = Ticket.objects(
+            Q(assigned_serviceman_id=s.id) | Q(assigned_staff_id=s.id),
+            status__in=unresolved_statuses
+        ).count()
+        result.append(ServicemanResponse(
+            id=s.id,
+            user_id=s.user_id,
+            name=s.name,
+            category=getattr(s, "category", "") or "",
+            phone=s.phone,
+            email=s.email,
+            is_active=s.is_active,
+            active_tickets_count=active_count
+        ))
+    return result
+
+@router.post("/servicemen", response_model=ServicemanResponse, status_code=status.HTTP_201_CREATED)
+def add_serviceman(
+    request: ServicemanCreateRequest,
+    current_user: User = Depends(require_admin),
+    db = Depends(get_db)
+):
+    """Add a serviceman record manually (Admin only). Rejects duplicate user ID or email."""
+    sm = AdminService.create_serviceman(db=db, admin_user=current_user, data=request)
+    return ServicemanResponse(
+        id=sm.id,
+        user_id=sm.user_id,
+        name=sm.name,
+        category=getattr(sm, "category", "") or "",
+        phone=sm.phone,
+        email=sm.email,
+        is_active=sm.is_active,
+        active_tickets_count=0
+    )
+
+@router.post("/servicemen/import-csv", response_model=CSVImportResponse)
+def import_servicemen_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_admin),
+    db = Depends(get_db)
+):
+    """Bulk import serviceman records from a CSV file (Admin only)."""
+    return AdminService.import_servicemen_csv(db=db, admin_user=current_user, file=file)
 
 
 # ------------------ Category Management (F14, U8) ------------------

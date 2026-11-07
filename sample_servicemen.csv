@@ -1,0 +1,7 @@
+user_id,name,email,category,phone,password
+service_carpenter2,Ramesh Woodcraft,ramesh.wood@campus.edu,Carpentry,+91-9876543210,Serviceman@123
+service_plumber2,Suresh Jal,suresh.jal@campus.edu,Plumbing,+91-9876543211,Serviceman@123
+service_electrician2,Kishore Wire,kishore.wire@campus.edu,Electrical,+91-9876543212,Serviceman@123
+service_mason2,Gopal Builders,gopal.mason@campus.edu,Masonry,+91-9876543213,Serviceman@123
+service_admin2,Sunita Gupta,sunita.admin@campus.edu,Administrative,+91-9876543214,Serviceman@123
+service_security2,Balraj Singh,balraj.guard@campus.edu,Security,+91-9876543215,Serviceman@123

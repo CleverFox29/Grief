@@ -14,6 +14,9 @@ from app.models import (
     Student,
     Admin,
     Serviceman,
+    Ticket,
+    TicketLog,
+    TicketStatus,
     UserRole,
     AuditLog,
     AuditAction
@@ -109,11 +112,14 @@ def seed_database():
             student_user.save()
             print("Added Default Student: 25CSB0A22 (password: Student@123)")
 
-        # 5. Seed Default Serviceman Users
+        # 5. Seed Default Serviceman Users for all categories
         servicemen_data = [
             {"user_id": "service_carpenter", "name": "Manoj Sharma", "category": "Carpentry", "email": "carpenter@campus.edu", "phone": "+91-9876543202"},
             {"user_id": "service_plumber", "name": "Rajesh Kumar", "category": "Plumbing", "email": "plumber@campus.edu", "phone": "+91-9876543201"},
-            {"user_id": "service_electrician", "name": "Sunil Verma", "category": "Electrical", "email": "electrician@campus.edu", "phone": "+91-9876543203"}
+            {"user_id": "service_electrician", "name": "Sunil Verma", "category": "Electrical", "email": "electrician@campus.edu", "phone": "+91-9876543203"},
+            {"user_id": "service_mason", "name": "Vikram Singh", "category": "Masonry", "email": "mason@campus.edu", "phone": "+91-9876543204"},
+            {"user_id": "service_admin", "name": "Anita Desai", "category": "Administrative", "email": "anita.admin@campus.edu", "phone": "+91-9876543205"},
+            {"user_id": "service_security", "name": "Devendra Pal", "category": "Security", "email": "security@campus.edu", "phone": "+91-9876543206"}
         ]
         for s_data in servicemen_data:
             existing_sm = Serviceman.objects(user_id=s_data["user_id"]).first()
@@ -129,6 +135,39 @@ def seed_database():
                 )
                 sm.save()
                 print(f"Added Serviceman: {s_data['user_id']} ({s_data['category']}, password: Serviceman@123)")
+
+        # 6. Seed a sample IN PROGRESS ticket assigned to demo serviceman Manoj Sharma (Carpentry)
+        carpenter = Serviceman.objects(user_id="service_carpenter").first()
+        carp_cat = category_map.get("Carpentry") or Category.objects(name="Carpentry").first()
+        if student_user and carpenter and carp_cat:
+            from app.models import Ticket, TicketLog
+            from app.services.ticket_service import TicketService
+            existing_ticket = Ticket.objects(assigned_serviceman_id=carpenter.id, status=TicketStatus.IN_PROGRESS.value).first()
+            if not existing_ticket:
+                t_uid = TicketService.generate_ticket_id()
+                sample_ticket = Ticket(
+                    ticket_id=t_uid,
+                    student_id=student_user.id,
+                    category_id=carp_cat.id,
+                    location="Hostel 3, Room 204",
+                    description="Study table wooden drawer lock is stuck and needs urgent repair.",
+                    status=TicketStatus.IN_PROGRESS.value,
+                    assigned_serviceman_id=carpenter.id,
+                    assigned_staff_id=carpenter.id,
+                    scheduling_remark="Inspecting and repairing desk drawer on Monday at 3 PM."
+                )
+                sample_ticket.save()
+                
+                log = TicketLog(
+                    ticket_id=sample_ticket.id,
+                    performed_by_id=admin_user.id,
+                    action="STATUS_UPDATE",
+                    old_status=TicketStatus.OPEN.value,
+                    new_status=TicketStatus.IN_PROGRESS.value,
+                    remark=f"Assigned to {carpenter.name} (Carpentry) and scheduled visit."
+                )
+                log.save()
+                print(f"Added Demo Assigned Ticket: {t_uid} (Assigned to Manoj Sharma, IN PROGRESS)")
 
         # 6. Log audit initialization
         audit = AuditLog(

@@ -11,6 +11,7 @@ from app.models import (
     User,
     Student,
     Admin,
+    Serviceman,
     StaffRecord,
     Category,
     Ticket,
@@ -26,6 +27,7 @@ from app.schemas.admin import (
     CSVImportResponse,
     StaffCreateRequest,
     StaffUpdateRequest,
+    ServicemanCreateRequest,
     CategoryCreateRequest,
     CategoryUpdateRequest,
     AuditLogResponse,
@@ -219,6 +221,177 @@ class AdminService:
 
         staff.save()
         return staff
+
+    # ------------------ Serviceman Master Records & CSV (F14) ------------------
+
+    @classmethod
+    def create_serviceman(cls, db, admin_user: User, data: ServicemanCreateRequest) -> Serviceman:
+        """Add a single serviceman record with duplicate ID and email prevention."""
+        user_id = data.user_id.strip()
+        email = str(data.email).strip().lower()
+
+        existing_id = User.objects(user_id=user_id).first()
+        if existing_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"A user with ID '{user_id}' already exists. Duplicate IDs are rejected."
+            )
+
+        existing_email = User.objects(email=email).first()
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"A user with email '{email}' already exists."
+            )
+
+        cat_name = data.category.strip()
+        cat = Category.objects(name__iexact=cat_name).first()
+        canonical_category = cat.name if cat else cat_name
+
+        serviceman = Serviceman(
+            user_id=user_id,
+            name=data.name.strip(),
+            email=email,
+            phone=data.phone.strip() if data.phone else None,
+            category=canonical_category,
+            password_hash=hash_password(data.password or "Serviceman@123"),
+            role=UserRole.SERVICEMAN.value,
+            is_active=True
+        )
+        serviceman.save()
+
+        # Sync matching staff record
+        existing_staff = StaffRecord.objects(name=serviceman.name).first()
+        if not existing_staff:
+            staff_rec = StaffRecord(
+                name=serviceman.name,
+                contact=serviceman.phone or "+91-0000000000",
+                category_id=cat.id if cat else None,
+                is_active=True,
+                notes=f"Serviceman account: {serviceman.user_id}"
+            )
+            staff_rec.save()
+
+        audit = AuditLog(
+            user_id=admin_user.id,
+            action="STAFF_CREATED",
+            entity_type="SERVICEMAN",
+            entity_id=serviceman.user_id,
+            details=f"Serviceman '{serviceman.name}' ({canonical_category}) created."
+        )
+        audit.save()
+
+        return serviceman
+
+    @classmethod
+    def import_servicemen_csv(cls, db, admin_user: User, file: UploadFile) -> CSVImportResponse:
+        """
+        Bulk import serviceman records from CSV file.
+        Validates structure and rejects duplicate user IDs or emails.
+        """
+        try:
+            contents = file.file.read().decode("utf-8-sig")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unable to read CSV file. Please upload a valid UTF-8 text file. Error: {str(e)}"
+            )
+
+        reader = csv.DictReader(io.StringIO(contents))
+        if not reader.fieldnames:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="CSV file is empty or invalid header format."
+            )
+
+        field_map = {f.strip().lower(): f for f in reader.fieldnames}
+        id_field = field_map.get("user_id") or field_map.get("staff_id") or field_map.get("id") or field_map.get("serviceman_id")
+        name_field = field_map.get("name") or field_map.get("serviceman_name") or field_map.get("full_name")
+        email_field = field_map.get("email") or field_map.get("email_address")
+        category_field = field_map.get("category") or field_map.get("trade") or field_map.get("division") or field_map.get("dept") or field_map.get("department")
+        phone_field = field_map.get("phone") or field_map.get("mobile") or field_map.get("contact")
+        password_field = field_map.get("password") or field_map.get("pass")
+
+        if not id_field or not name_field or not email_field or not category_field:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"CSV must contain columns for User ID, Name, Email, and Category. Found: {list(reader.fieldnames)}"
+            )
+
+        total_processed = 0
+        imported_count = 0
+        duplicates_rejected = 0
+        errors = []
+        seen_ids = set()
+
+        for idx, row in enumerate(reader, start=2):
+            total_processed += 1
+            user_id = row.get(id_field, "").strip()
+            name = row.get(name_field, "").strip()
+            email = row.get(email_field, "").strip().lower()
+            category_raw = row.get(category_field, "").strip()
+            phone = row.get(phone_field, "").strip() if phone_field else None
+            password = row.get(password_field, "").strip() if password_field else "Serviceman@123"
+
+            if not user_id or not name or not email or not category_raw:
+                errors.append(f"Row {idx}: Missing mandatory user_id, name, email, or category.")
+                continue
+
+            if user_id in seen_ids:
+                duplicates_rejected += 1
+                errors.append(f"Row {idx}: Duplicate serviceman ID '{user_id}' within upload file.")
+                continue
+            seen_ids.add(user_id)
+
+            existing = User.objects(Q(user_id=user_id) | Q(email=email)).first()
+            if existing:
+                duplicates_rejected += 1
+                errors.append(f"Row {idx}: User ID '{user_id}' or email '{email}' already registered.")
+                continue
+
+            cat = Category.objects(name__iexact=category_raw).first()
+            canonical_category = cat.name if cat else category_raw
+
+            sm = Serviceman(
+                user_id=user_id,
+                name=name,
+                email=email,
+                phone=phone,
+                category=canonical_category,
+                password_hash=hash_password(password),
+                role=UserRole.SERVICEMAN.value,
+                is_active=True
+            )
+            sm.save()
+
+            existing_staff = StaffRecord.objects(name=name).first()
+            if not existing_staff:
+                staff_rec = StaffRecord(
+                    name=name,
+                    contact=phone or "+91-0000000000",
+                    category_id=cat.id if cat else None,
+                    is_active=True,
+                    notes=f"Serviceman account: {user_id}"
+                )
+                staff_rec.save()
+
+            imported_count += 1
+
+        audit = AuditLog(
+            user_id=admin_user.id,
+            action="STAFF_CREATED",
+            entity_type="SYSTEM",
+            details=f"Bulk serviceman CSV imported: {imported_count} saved, {duplicates_rejected} duplicates rejected."
+        )
+        audit.save()
+
+        return CSVImportResponse(
+            total_processed=total_processed,
+            successfully_imported=imported_count,
+            duplicates_rejected=duplicates_rejected,
+            errors=errors[:15],
+            message=f"Serviceman CSV import complete. {imported_count} servicemen added, {duplicates_rejected} duplicates skipped."
+        )
 
     # ------------------ Grievance Categories (F14) ------------------
 

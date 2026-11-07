@@ -2,10 +2,11 @@
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Form, File, UploadFile, Query, status, HTTPException
+from mongoengine import Q
 
 from app.database import get_db
-from app.core.deps import get_current_user, require_student, require_admin, require_serviceman, require_serviceman_or_admin
-from app.models import User, Category, StaffRecord, Notification, Ticket, Serviceman
+from app.core.deps import get_current_user, require_student, require_admin, require_serviceman, require_serviceman_or_admin, require_student_or_admin
+from app.models import User, Category, StaffRecord, Notification, Ticket, Serviceman, TicketStatus
 from app.schemas.ticket import (
     CategoryResponse,
     StaffResponse,
@@ -82,19 +83,30 @@ def get_servicemen(
     qs = Serviceman.objects(is_active=True)
     if category and category.strip():
         qs = qs.filter(category__iexact=category.strip())
-    servicemen = qs.order_by("+name")
-    return [
-        ServicemanResponse(
+    servicemen = list(qs.order_by("+name"))
+    
+    unresolved_statuses = [
+        TicketStatus.OPEN.value,
+        TicketStatus.IN_PROGRESS.value,
+        TicketStatus.PENDING_CONFIRMATION.value
+    ]
+    result = []
+    for s in servicemen:
+        active_count = Ticket.objects(
+            Q(assigned_serviceman_id=s.id) | Q(assigned_staff_id=s.id),
+            status__in=unresolved_statuses
+        ).count()
+        result.append(ServicemanResponse(
             id=s.id,
             user_id=s.user_id,
             name=s.name,
             category=getattr(s, "category", "") or "",
             phone=s.phone,
             email=s.email,
-            is_active=s.is_active
-        )
-        for s in servicemen
-    ]
+            is_active=s.is_active,
+            active_tickets_count=active_count
+        ))
+    return result
 
 
 # ----------------- Duplicate Check & Grievance Creation -----------------
@@ -102,7 +114,7 @@ def get_servicemen(
 @router.post("/tickets/check-duplicates", response_model=DuplicateCheckResponse)
 def check_ticket_duplicates(
     request: DuplicateCheckRequest,
-    current_user: User = Depends(require_student),
+    current_user: User = Depends(require_student_or_admin),
     db = Depends(get_db)
 ):
     """Real-time duplicate detection (< 2s) comparing open tickets (F6)."""
@@ -127,7 +139,7 @@ def raise_grievance(
     action: str = Form("CREATE"),
     parent_ticket_id: Optional[int] = Form(None),
     photo: Optional[UploadFile] = File(None),
-    current_user: User = Depends(require_student),
+    current_user: User = Depends(require_student_or_admin),
     db = Depends(get_db)
 ):
     """Submit a campus grievance ticket (F4, F5, F7, U3)."""

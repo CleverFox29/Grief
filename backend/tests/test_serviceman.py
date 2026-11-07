@@ -316,3 +316,182 @@ def test_admin_manual_close_workflow(client, student_auth_header, admin_auth_hea
     closed_data = close_resp.json()
     assert closed_data["status"] == "CLOSED"
     assert closed_data["closed_at"] is not None
+
+def test_serviceman_active_tickets_count(client, student_auth_header, admin_auth_header, db_session):
+    """Test that active_tickets_count accurately reflects open/in-progress issues assigned to a serviceman."""
+    carp_cat = Category.objects(name="Carpentry").first()
+    if not carp_cat:
+        carp_cat = Category(name="Carpentry", description="Woodwork repairs").save()
+
+    serviceman = Serviceman(
+        user_id="service_count_test",
+        name="Counter Worker",
+        email="count@campus.edu",
+        category="Carpentry",
+        phone="+91-9876543299",
+        password_hash=hash_password("Pass1234")
+    )
+    serviceman.save()
+
+    # Query servicemen list: count should initially be 0
+    resp = client.get("/api/servicemen?category=Carpentry", headers=admin_auth_header)
+    assert resp.status_code == 200
+    sm_data = next((s for s in resp.json() if s["id"] == serviceman.id), None)
+    assert sm_data is not None
+    assert sm_data["active_tickets_count"] == 0
+
+    # Student creates ticket
+    create_resp = client.post(
+        "/api/tickets",
+        data={
+            "category_id": carp_cat.id,
+            "location": "Hostel 3, Room 101",
+            "description": "Desk leg cracked and needs support.",
+            "is_confidential": False,
+            "action": "CREATE"
+        },
+        headers=student_auth_header
+    )
+    t_id = create_resp.json()["id"]
+
+    # Admin assigns ticket to this serviceman
+    client.patch(
+        f"/api/tickets/{t_id}",
+        json={
+            "assigned_serviceman_id": serviceman.id,
+            "remark": "Assigned to Counter Worker"
+        },
+        headers=admin_auth_header
+    )
+
+    # Active count should now be 1
+    resp2 = client.get("/api/servicemen?category=Carpentry", headers=admin_auth_header)
+    sm_data2 = next((s for s in resp2.json() if s["id"] == serviceman.id), None)
+    assert sm_data2["active_tickets_count"] == 1
+
+def test_serviceman_cannot_resolve_unless_in_progress(client, student_auth_header, admin_auth_header, db_session):
+    """Verify that serviceman can only transition from IN PROGRESS to RESOLVED (pending confirmation)."""
+    carp_cat = Category.objects(name="Carpentry").first()
+    if not carp_cat:
+        carp_cat = Category(name="Carpentry", description="Woodwork repairs").save()
+
+    serviceman = Serviceman(
+        user_id="service_strict_test",
+        name="Strict Worker",
+        email="strict@campus.edu",
+        category="Carpentry",
+        password_hash=hash_password("Pass1234")
+    )
+    serviceman.save()
+
+    # Student creates ticket
+    create_resp = client.post(
+        "/api/tickets",
+        data={
+            "category_id": carp_cat.id,
+            "location": "Room 50",
+            "description": "Broken hinge on closet door",
+            "is_confidential": False,
+            "action": "CREATE"
+        },
+        headers=student_auth_header
+    )
+    t_id = create_resp.json()["id"]
+
+    # Directly set assigned serviceman but keep status OPEN
+    ticket = Ticket.objects(id=t_id).first()
+    ticket.assigned_serviceman_id = serviceman.id
+    ticket.status = TicketStatus.OPEN.value
+    ticket.save()
+
+    sm_login = client.post("/api/auth/login", json={
+        "role": "SERVICEMAN",
+        "user_id": "service_strict_test",
+        "password": "Pass1234"
+    })
+    sm_auth = {"Authorization": f"Bearer {sm_login.json()['access_token']}"}
+
+    # Attempt to resolve while OPEN: must fail with 400
+    resolve_resp = client.post(
+        f"/api/tickets/{t_id}/resolve",
+        json={"serviceman_remark": "Attempting early resolution without starting work."},
+        headers=sm_auth
+    )
+    assert resolve_resp.status_code == 400
+    assert "IN PROGRESS" in resolve_resp.json()["detail"]
+
+    # Now schedule visit or set to IN PROGRESS
+    ticket.status = TicketStatus.IN_PROGRESS.value
+    ticket.save()
+
+    # Attempt to resolve while IN PROGRESS: must succeed
+    resolve_ok = client.post(
+        f"/api/tickets/{t_id}/resolve",
+        json={"serviceman_remark": "Hinge replaced and tested."},
+        headers=sm_auth
+    )
+    assert resolve_ok.status_code == 200
+    assert resolve_ok.json()["status"] == "PENDING CONFIRMATION"
+
+def test_admin_servicemen_csv_and_manual_creation(client, admin_auth_header, db_session):
+    """Test Admin manual addition and CSV bulk import for Servicemen accounts."""
+    admin_cat = Category(name="Administrative", description="Admin services").save()
+
+    # 1. Manual creation
+    manual_resp = client.post(
+        "/api/admin/servicemen",
+        json={
+            "user_id": "service_anita_test",
+            "name": "Anita Desai",
+            "email": "anita.desai@campus.edu",
+            "category": "Administrative",
+            "phone": "+91-9876543205",
+            "password": "Serviceman@123"
+        },
+        headers=admin_auth_header
+    )
+    assert manual_resp.status_code == 201
+    manual_data = manual_resp.json()
+    assert manual_data["user_id"] == "service_anita_test"
+    assert manual_data["category"] == "Administrative"
+
+    # Verify duplicate rejection
+    dup_resp = client.post(
+        "/api/admin/servicemen",
+        json={
+            "user_id": "service_anita_test",
+            "name": "Duplicate Anita",
+            "email": "another@campus.edu",
+            "category": "Administrative"
+        },
+        headers=admin_auth_header
+    )
+    assert dup_resp.status_code == 400
+
+    # 2. Bulk CSV import
+    csv_content = (
+        "user_id,name,email,category,phone\n"
+        "service_vikram_test,Vikram Singh,vikram.test@campus.edu,Masonry,+91-9876543204\n"
+        "service_devendra_test,Devendra Pal,devendra.test@campus.edu,Security,+91-9876543206\n"
+        "service_anita_test,Duplicate Anita,anita.dup@campus.edu,Administrative,+91-0000000000\n"
+    ).encode("utf-8")
+
+    import_resp = client.post(
+        "/api/admin/servicemen/import-csv",
+        files={"file": ("servicemen.csv", csv_content, "text/csv")},
+        headers=admin_auth_header
+    )
+    assert import_resp.status_code == 200
+    res_data = import_resp.json()
+    assert res_data["total_processed"] == 3
+    assert res_data["successfully_imported"] == 2
+    assert res_data["duplicates_rejected"] == 1
+
+    # Verify newly imported serviceman can log in
+    sm_login = client.post("/api/auth/login", json={
+        "role": "SERVICEMAN",
+        "user_id": "service_vikram_test",
+        "password": "Serviceman@123"
+    })
+    assert sm_login.status_code == 200
+    assert sm_login.json()["user"]["name"] == "Vikram Singh"

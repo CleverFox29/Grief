@@ -830,6 +830,12 @@ class TicketService:
                 detail="Access denied: You can only resolve tickets assigned to you by an administrator."
             )
 
+        if ticket.status != TicketStatus.IN_PROGRESS.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ticket must be 'IN PROGRESS' before it can be marked as resolved (current status: {ticket.status})."
+            )
+
         final_proof_url = proof_url
         if proof_file:
             final_proof_url = validate_and_save_photo(proof_file)

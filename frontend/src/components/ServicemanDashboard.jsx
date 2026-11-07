@@ -465,9 +465,10 @@ export default function ServicemanDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {filteredTickets.map(ticket => {
               const badge = getStatusBadge(ticket.status);
-              const isAssignedToMe = ticket.assigned_serviceman_id === user?.id;
+              const isAssignedToMe = ticket.assigned_serviceman_id === user?.id || ticket.assigned_staff_id === user?.id;
               const canClaim = ticket.status === 'OPEN' && !ticket.assigned_serviceman_id;
-              const canResolve = isAssignedToMe && ['OPEN', 'IN PROGRESS'].includes(ticket.status);
+              const canResolve = isAssignedToMe && ticket.status === 'IN PROGRESS';
+              const canStartWork = isAssignedToMe && ticket.status === 'OPEN';
 
               return (
                 <div
@@ -611,8 +612,24 @@ export default function ServicemanDashboard() {
                     </button>
 
                     <div className="flex items-center space-x-2">
+                      {/* Start Work Button for OPEN assigned tickets */}
+                      {canStartWork && (
+                        <button
+                          onClick={() => {
+                            setScheduleModalTicket(ticket);
+                            setSchedulingRemark('Starting work on this issue.');
+                            setScheduleError(null);
+                          }}
+                          className="inline-flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold py-1.5 px-3 rounded-xl transition-colors shadow-sm"
+                          title="Begin work and move to IN PROGRESS"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>Start Work</span>
+                        </button>
+                      )}
+
                       {/* Schedule Visit Button */}
-                      {['OPEN', 'IN PROGRESS'].includes(ticket.status) && (
+                      {ticket.status === 'IN PROGRESS' && (
                         <button
                           onClick={() => {
                             setScheduleModalTicket(ticket);
@@ -627,7 +644,7 @@ export default function ServicemanDashboard() {
                         </button>
                       )}
 
-                      {/* Submit Proof of Work Button */}
+                      {/* Mark as Resolved Button (only when IN PROGRESS) */}
                       {canResolve && (
                         <button
                           onClick={() => {
@@ -636,15 +653,16 @@ export default function ServicemanDashboard() {
                             setProofError(null);
                           }}
                           className="inline-flex items-center space-x-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-1.5 px-3 rounded-xl shadow-sm transition-colors"
+                          title="Mark issue as resolved and submit proof for student check"
                         >
-                          <Camera className="w-3.5 h-3.5" />
-                          <span>Submit Proof</span>
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>Mark as Resolved</span>
                         </button>
                       )}
 
                       {ticket.status === 'PENDING CONFIRMATION' && (
                         <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-1 rounded-md border border-purple-200">
-                          Waiting for Student
+                          Waiting for Student Confirmation
                         </span>
                       )}
                     </div>
