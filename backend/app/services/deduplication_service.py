@@ -134,8 +134,8 @@ class EmbeddingProvider:
 class DeduplicationEngine:
     """Rank unresolved tickets by category, location, lexical, and semantic similarity."""
 
-    DUPLICATE_THRESHOLD = 30.0
-    LIVE_SUGGESTION_THRESHOLD = 30.0
+    DUPLICATE_THRESHOLD = 50
+    LIVE_SUGGESTION_THRESHOLD = 50
 
     @staticmethod
     def _location_parts(location: str) -> Dict[str, Optional[str]]:
