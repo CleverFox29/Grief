@@ -205,9 +205,9 @@ class DeduplicationEngine:
             semantic_score = max(0.0, min(100.0, cosine * 100.0))
 
         if not has_location:
-            overall = semantic_score * 0.80 + lexical_score * 0.20 if query_vector and stored else lexical_score
+            overall = semantic_score * 0.90 + lexical_score * 0.10 if query_vector and stored else lexical_score
         elif query_vector and stored:
-            overall = location_score * 0.25 + lexical_score * 0.15 + semantic_score * 0.60
+            overall = location_score * 0.15 + lexical_score * 0.10 + semantic_score * 0.75
         else:
             overall = location_score * 0.45 + lexical_score * 0.55
         if has_location and room_conflict:
