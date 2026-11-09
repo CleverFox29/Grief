@@ -6,7 +6,7 @@ from mongoengine import Q
 
 from app.database import get_db
 from app.core.deps import get_current_user, require_student, require_admin, require_serviceman, require_serviceman_or_admin, require_student_or_admin
-from app.models import User, Category, StaffRecord, Notification, Ticket, Serviceman, TicketStatus
+from app.models import User, Category, StaffRecord, Notification, Ticket, Serviceman, TicketStatus, TicketLog
 from app.schemas.ticket import (
     CategoryResponse,
     StaffResponse,
@@ -263,6 +263,30 @@ def get_ticket_details(
 ):
     """Retrieve complete ticket detail and full timeline audit history (F8, U4, U6)."""
     return TicketService.get_ticket_detail(db=db, ticket_id=ticket_id, current_user=current_user)
+
+@router.delete("/tickets/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_student_ticket(
+    ticket_id: int,
+    current_user: User = Depends(require_student),
+    db = Depends(get_db),
+):
+    """Allow students to remove their own untouched, unassigned open ticket."""
+    ticket = Ticket.objects(id=ticket_id, student_id=current_user.id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found.")
+    if (ticket.status != TicketStatus.OPEN.value or ticket.assigned_staff_id or
+            ticket.assigned_serviceman_id or ticket.parent_ticket_id is not None or
+            Ticket.objects(parent_ticket_id=ticket.id).first()):
+        raise HTTPException(status_code=409, detail="This ticket can no longer be deleted.")
+    staff_activity = TicketLog.objects(ticket_id=ticket.id).filter(
+        action__nin=["TICKET_CREATED"]
+    ).first()
+    if staff_activity:
+        raise HTTPException(status_code=409, detail="This ticket has already been worked on and cannot be deleted.")
+    Notification.objects(ticket_id=ticket.id).delete()
+    TicketLog.objects(ticket_id=ticket.id).delete()
+    ticket.delete()
+    return None
 
 @router.patch("/tickets/{ticket_id}", response_model=TicketDetailResponse)
 def update_ticket_triage(

@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     # Database (MongoDB)
     MONGODB_URL: str = "mongodb://localhost:27017/cgas_db"
     MONGODB_DB_NAME: str = "cgas_db"
+    MONGODB_VECTOR_INDEX: str = "ticket_description_vector_index"
+    VECTOR_SEARCH_CANDIDATES: int = 100
 
     # Semantic matching (keep the API key server-side; never expose it to React).
     GEMINI_API_KEY: Optional[str] = None

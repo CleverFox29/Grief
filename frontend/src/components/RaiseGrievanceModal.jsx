@@ -77,7 +77,9 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
         });
         if (!resp.ok) throw new Error('Suggestion lookup failed');
         const data = await resp.json();
-        setLiveMatches(data.matches || []);
+        setLiveMatches([...(data.matches || [])].sort(
+          (a, b) => (Number(b.similarity_score) || 0) - (Number(a.similarity_score) || 0)
+        ));
       } catch (err) {
         if (err.name !== 'AbortError') setLiveMatches([]);
       } finally {
@@ -385,7 +387,12 @@ export default function RaiseGrievanceModal({ isOpen, onClose, onTicketCreated }
                     {liveMatches.map(match => (
                       <div key={match.id} className="px-3 py-2 border-b last:border-b-0 border-slate-100 flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-800">#{match.ticket_id} · {match.status}</div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-800">#{match.ticket_id} · {match.status}</span>
+                            <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                              {Math.round(Number(match.similarity_score) || 0)}% similar
+                            </span>
+                          </div>
                           <div className="mt-1 text-[11px] text-slate-500">{match.location}</div>
                           <p className="mt-0.5 text-[11px] leading-snug text-slate-700 line-clamp-2">
                             <span className="font-semibold text-slate-600">Existing issue: </span>

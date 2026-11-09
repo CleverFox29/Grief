@@ -18,7 +18,8 @@ import {
   MessageSquare,
   Sparkles,
   Wrench,
-  Lock
+  Lock,
+  Trash2
 } from 'lucide-react';
 
 export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketUpdated }) {
@@ -210,6 +211,25 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
     }
   };
 
+  const handleDeleteTicket = async () => {
+    if (!window.confirm(`Delete ticket #${ticket.ticket_id}? This cannot be undone.`)) return;
+    setActionError(null);
+    try {
+      const resp = await fetch(`/api/tickets/${ticket.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        throw new Error(data.detail || 'Failed to delete ticket.');
+      }
+      onTicketUpdated && onTicketUpdated();
+      onClose();
+    } catch (err) {
+      setActionError(err.message);
+    }
+  };
+
   const getStatusBadge = (status) => {
     switch (status) {
       case 'OPEN':
@@ -229,9 +249,12 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
     }
   };
 
-  const isStudentOwner = user && ticket && user.role === 'STUDENT' && user.id === ticket.student_id;
+  const isStudentOwner = user && ticket && user.role === 'STUDENT' &&
+    Number(user.id) === Number(ticket.student_id);
   const isPendingConfirmation = ticket?.status === 'PENDING CONFIRMATION';
   const isResolved = ticket?.status === 'RESOLVED';
+  const canDeleteTicket = isStudentOwner && ticket.status === 'OPEN' &&
+    !ticket.assigned_staff_id && !ticket.assigned_serviceman_id && !ticket.parent_ticket_id;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
@@ -297,6 +320,13 @@ export default function TicketDetailModal({ ticketId, isOpen, onClose, onTicketU
                   </span>
                 </div>
               </div>
+
+              {canDeleteTicket && (
+                <button type="button" onClick={handleDeleteTicket}
+                  className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100">
+                  <Trash2 className="h-3.5 w-3.5" /> Delete this ticket
+                </button>
+              )}
 
               {/* ACTION ERROR BANNER */}
               {actionError && (

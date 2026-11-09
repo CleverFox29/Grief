@@ -138,6 +138,40 @@ class DeduplicationEngine:
     LIVE_SUGGESTION_THRESHOLD = 50
 
     @staticmethod
+    def _vector_candidates(db, category_id: int, statuses: List[str], query_vector: List[float]):
+        """Fetch likely duplicate tickets using an Atlas Vector Search index."""
+        if db is None or not settings.MONGODB_VECTOR_INDEX:
+            return None
+        try:
+            collection = db[Ticket._get_collection_name()]
+            pipeline = [
+                {
+                    "$vectorSearch": {
+                        "index": settings.MONGODB_VECTOR_INDEX,
+                        "path": "description_embedding",
+                        "queryVector": query_vector,
+                        "numCandidates": max(settings.VECTOR_SEARCH_CANDIDATES, 20),
+                        "limit": max(settings.VECTOR_SEARCH_CANDIDATES, 20),
+                        "filter": {
+                            "$and": [
+                                {"category_id": {"$eq": category_id}},
+                                {"status": {"$in": statuses}},
+                                {"parent_ticket_id": {"$eq": None}},
+                            ]
+                        },
+                    }
+                },
+                {"$project": {"_id": 1}},
+            ]
+            ids = [item["_id"] for item in collection.aggregate(pipeline)]
+            return list(Ticket.objects(id__in=ids)) if ids else []
+        except Exception:
+            # Atlas indexes are configured outside the application; preserve the
+            # existing matching behavior until the index is available.
+            logging.info("Atlas Vector Search unavailable; using MongoDB candidate scan", exc_info=True)
+            return None
+
+    @staticmethod
     def _location_parts(location: str) -> Dict[str, Optional[str]]:
         text = re.sub(r"\s+", " ", location.lower().strip())
         room = re.search(r"\b(?:room|rm)\s*[-:#]?\s*([a-z0-9-]+)|\b([a-z]\d[- ]?\d{2,4})\b", text)
@@ -171,9 +205,9 @@ class DeduplicationEngine:
             semantic_score = max(0.0, min(100.0, cosine * 100.0))
 
         if not has_location:
-            overall = semantic_score * 0.65 + lexical_score * 0.35 if query_vector and stored else lexical_score
+            overall = semantic_score * 0.80 + lexical_score * 0.20 if query_vector and stored else lexical_score
         elif query_vector and stored:
-            overall = location_score * 0.35 + lexical_score * 0.25 + semantic_score * 0.40
+            overall = location_score * 0.25 + lexical_score * 0.15 + semantic_score * 0.60
         else:
             overall = location_score * 0.45 + lexical_score * 0.55
         if has_location and room_conflict:
@@ -186,12 +220,13 @@ class DeduplicationEngine:
         limit: int = 5, threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         statuses = [TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]
-        candidates = list(Ticket.objects(category_id=category_id, status__in=statuses, parent_ticket_id=None))
-        if not candidates:
-            return []
-
         minimum_score = cls.DUPLICATE_THRESHOLD if threshold is None else threshold
         query_vector = EmbeddingProvider.encode(description)
+        candidates = cls._vector_candidates(db, category_id, statuses, query_vector) if query_vector else None
+        if candidates is None:
+            candidates = list(Ticket.objects(category_id=category_id, status__in=statuses, parent_ticket_id=None))
+        if not candidates:
+            return []
         matches = []
         for ticket in candidates:
             score = cls._score(location, description, ticket, query_vector)

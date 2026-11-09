@@ -9,12 +9,13 @@ import {
   Eye, 
   HardHat,
   CopyCheck,
-  PlusCircle
+  PlusCircle,
+  Trash2
 } from 'lucide-react';
 import TicketDetailModal from './TicketDetailModal';
 
 export default function StudentTicketList({ onOpenRaiseModal }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +24,24 @@ export default function StudentTicketList({ onOpenRaiseModal }) {
   
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  const deleteTicket = async (event, ticket) => {
+    event.stopPropagation();
+    if (!window.confirm(`Delete ticket #${ticket.ticket_id}? This cannot be undone.`)) return;
+    try {
+      const response = await fetch(`/api/tickets/${ticket.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Could not delete this ticket.');
+      }
+      fetchTickets();
+    } catch (error) {
+      window.alert(error.message);
+    }
+  };
 
   const fetchTickets = () => {
     setLoading(true);
@@ -187,6 +206,16 @@ export default function StudentTicketList({ onOpenRaiseModal }) {
                     <span>Linked to Parent Ticket</span>
                   </span>
                 )}
+                {user?.role === 'STUDENT' && Number(user.id) === Number(t.student_id) &&
+                  t.status === 'OPEN' && !t.assigned_staff_id && !t.assigned_serviceman_id && !t.parent_ticket_id && (
+                    <button
+                      type="button"
+                      onClick={(event) => deleteTicket(event, t)}
+                      className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700 hover:bg-rose-100"
+                    >
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </button>
+                  )}
               </div>
             </div>
           ))}

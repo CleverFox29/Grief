@@ -288,6 +288,9 @@ CGAS is fully configured for deployment on [Vercel](https://vercel.com):
    - Vercel automatically reads [`vercel.json`](file:///home/soham-roy/Documents/code/web/Grief/vercel.json) to build the Vite frontend (`frontend/dist`) and deploy the serverless Python API ([`api/index.py`](file:///home/soham-roy/Documents/code/web/Grief/api/index.py)).
 2. **Configure Environment Variables** (under *Project Settings* $\rightarrow$ *Environment Variables*):
    - `MONGODB_URL`: Your MongoDB connection URI (e.g., MongoDB Atlas connection string `mongodb+srv://<user>:<password>@cluster0.mongodb.net/cgas_db?retryWrites=true&w=majority`).
+   - `MONGODB_VECTOR_INDEX`: Atlas Vector Search index name for ticket embeddings (default: `ticket_description_vector_index`).
+   - `VECTOR_SEARCH_CANDIDATES`: Maximum number of semantic candidates fetched before the app applies its location and text scoring (default: `100`).
+   - `GEMINI_EMBEDDING_DIMENSIONS`: Must match the Atlas vector index dimensions (default: `768`).
    - `MONGODB_DB_NAME`: `cgas_db`
    - `SECRET_KEY`: A secure 256-bit random secret for JWT authentication.
    - `AUTO_SEED`: `true` (automatically seeds initial categories, staff, and demo accounts upon first request if the MongoDB collection is empty).
@@ -341,6 +344,23 @@ Pre-seeded accounts are provided for immediate evaluation. The web login interfa
 7. Click **"Support Existing Ticket"**:
    - The new ticket is immediately linked as a `DUPLICATE` child under the parent ticket.
    - The student is spared redundant follow-ups and will receive automatic status alerts when the parent is resolved.
+
+#### Atlas Vector Search setup
+
+For semantic duplicate retrieval, create a Vector Search index on the `tickets` collection in the database configured by `MONGODB_DB_NAME`. Use the index name configured by `MONGODB_VECTOR_INDEX` and this definition (keep `numDimensions` equal to `GEMINI_EMBEDDING_DIMENSIONS`):
+
+```json
+{
+  "fields": [
+    { "type": "vector", "path": "description_embedding", "numDimensions": 768, "similarity": "cosine" },
+    { "type": "filter", "path": "category_id" },
+    { "type": "filter", "path": "status" },
+    { "type": "filter", "path": "parent_ticket_id" }
+  ]
+}
+```
+
+The app stores Gemini embeddings when new tickets are created. To populate existing unresolved tickets, sign in as an admin and call `POST /api/admin/tickets/backfill-embeddings` (repeat with a larger `limit` as needed). Until the Atlas index is ready, duplicate checks automatically use the existing MongoDB candidate scan. Atlas Vector Search requires an Atlas cluster that supports Vector Search; local MongoDB continues to work through the fallback.
 
 ### Walkthrough 3: Admin Unified Queue, Multi-Filter & Staff Assignment (F9, F10, F11)
 1. Click **"Sign Out"** and click **"Demo Admin"** $\rightarrow$ Log in as Administrator.
